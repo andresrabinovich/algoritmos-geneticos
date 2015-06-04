@@ -1,3 +1,6 @@
+#TO DO
+#VER COMO IMPLEMENTAR LA FUNCION SAMPLE EN C!
+
 #///////////////
 #CONFIGURACIONES
 #///////////////
@@ -14,17 +17,22 @@ alto_del_cluster = 0.1; #lo que mide el cluster en y
 #---------------------
 #Configuraciones de AG
 #---------------------
-poblacion = 50;
-pm = 0.01; #probabilidad de mutacion
-pc = 0.1; #probabilidad de single-point crossover
-generaciones = 250;
+poblacion = 40;
+pm = 0.1; #probabilidad de mutacion
+pc = 0.3; #probabilidad de single-point crossover
+pp = 3; #Cromosomas a seleccionar aleatoreamente en cada busqueda de padres
+k_max = 10; #Maxima cantidad de clusters a buscar
+alfa = 0.1; #Amplitud de mutacion de valores de activacion
+epsilon = 0.3; #Amplitud de mutacion de centroides
+soluciones_de_elite = 4; #Las mejores soluciones pasan sin alteraciones a la proxima generacion
+generaciones = 500;
 corridas = 1;
-k_max = dim_red^2; #TO DO - Ver de adaptar el algoritmo para no tener que decirle cuantos clusters buscar
+
 
 #////////////////////
 #CARGADO DE LIBRERIAS
 #////////////////////
-library(fpc);
+#library(fpc);
 
 #///////////////////////
 #COMIENZAN LAS FUNCIONES
@@ -33,28 +41,100 @@ library(fpc);
 #------------------
 #Funcion de fitness
 #------------------
-calcular_fitness <- function(cromosoma, matriz_de_distancias){
-	#return (binario_a_decimal(cromosoma));	
-	#return (sum(cromosoma));
-	#Vamos a probar con silhouette como funcion de fitness
-	#s<-silhouette(cromosoma, matriz_de_distancias);
-	#si<-summary(s);
-	#return (si$si.summary["Mean"]+1); #Le sumamos 1 para que sea positiva
-	#Vamos a probar con el indice de Calinski-Harabasz (ch)
-	return (cluster.stats(matriz_de_distancias, cromosoma)$ch);
+calcular_fitness <- function(cromosoma, promedio, k_max, puntos){
+
+	#Va a usar como funcion de fitness el indice Calinski-Harabasz 
+	#Guarda la distancia de cada punto a su correspondiente cluster
+	distancias = matrix(0, ncol=1, nrow=nrow(puntos));
+
+	#Cuantos clusters hay habilitados
+	clusters = 0;
+	for(i in 1:k_max){
+		#Si el valor de activacion es mayor a 0.5 (i.e. esta activado) busca los puntos que pertenecen a ese cluster		
+		if(cromosoma[i] >= 0.5) clusters = clusters + 1;
+	}
+	
+	#Si solo hay un cluster, devuelve 0
+	if(clusters < 2) return (0);
+
+	#Asigna primero cada punto a un cluster por proximidad
+	for(punto in 1:nrow(puntos)){
+		
+		#Inicializa la distancia al cluster al que pertenece (inf = no pertenece a ninguno)		
+		distancia_a_k = Inf;
+		for(i in 1:k_max){
+			#Si el valor de activacion es mayor a 0.5 (i.e. esta activado) busca los puntos que pertenecen a ese cluster		
+			if(cromosoma[i] >= 0.5){
+				#Si la distancia a este centroide es la mas chica, se lo asigno al centroide
+				distancia_a_i = (puntos[punto, 1] - cromosoma[(k_max + (2*i - 1))])^2 + (puntos[punto, 2] - cromosoma[(k_max + (2*i))])^2
+				if(distancia_a_i < distancia_a_k) {
+					distancia_a_k = distancia_a_i;
+				}
+			}		
+			distancias[punto] = distancia_a_k; #La distancia cuadriatica del punto al cluster que pertenece
+		
+		}
+	}
+	#Suma todas las distancias intra-clusters
+	distancia_intra_cluster = sum(distancias);
+		
+	#Teniendo todo solo resta calcular el indice CH
+	ch = (((promedio - distancia_intra_cluster)/distancia_intra_cluster)*(nrow(puntos)-clusters)/(clusters-1));
+	return (ch);
 }
 
 #-------------------
 #Funcion de mutacion
 #-------------------
-mutar <- function(cromosoma, pm, k){
-	#Muta un bit del cromosoma con probabilidad pm
-	if(runif(1) <= pm){
-		#Elije un locus al azar y lo cambia
-		posicion = sample(1:length(cromosoma), 1);
-		red<-c(1:k);
-		red<-red[-cromosoma[posicion]];	#Sacamos como posibilidad que la mutacion lo deje en el mismo lugar	
-		cromosoma[posicion] = sample(red, 1);
+mutar <- function(cromosoma, pm, k_max, alfa, epsilon, valores_limite){
+	
+	#Muta primero los valores de activacion
+	mascara = sample(0:1, k_max, replace=TRUE, c((1-pm),pm));
+	for(i in 1:k_max){
+		if(mascara[i]){
+	
+			#muta
+			nuevo_va = cromosoma[i] + runif(min=-alfa, max=alfa, 1);
+			if(nuevo_va > 1){			
+				cromosoma[i] = 1;
+			}else if(nuevo_va < 0){
+				cromosoma[i] = 0;
+			}else{
+				cromosoma[i] = nuevo_va;
+			}
+		}
+		
+	}
+
+	#Muta ahora los valores de los centroides
+	mascara = sample(0:1, k_max, replace=TRUE, c((1-pm),pm));
+	t = c(0,0);
+	t[1] = epsilon*(valores_limite[1,2] - valores_limite[1,1]); #Amplitud de la mutacion en x
+	t[2] = epsilon*(valores_limite[2,2] - valores_limite[2,1]); #Amplitud de la mutacion en y
+	for(i in 1:k_max){
+		if(mascara[i]){
+	
+			#muta
+			nuevo_x = cromosoma[(k_max+(2*i - 1))] + runif(min=-t[1], max=t[1], 1);
+			nuevo_y = cromosoma[(k_max+(2*i))] + runif(min=-t[2], max=t[2], 1);
+			if(nuevo_x > valores_limite[1,2]){			
+				cromosoma[(k_max+(2*i - 1))] = valores_limite[1,2];
+			}else if(nuevo_x < valores_limite[1,1]){
+				cromosoma[(k_max+(2*i - 1))] = valores_limite[1,1];
+			}else{
+				cromosoma[(k_max+(2*i - 1))] = nuevo_x;
+			}
+
+			if(nuevo_y > valores_limite[2,2]){			
+				cromosoma[(k_max+(2*i))] = valores_limite[2,2];
+			}else if(nuevo_y < valores_limite[2,1]){
+				cromosoma[(k_max+(2*i))] = valores_limite[2,1];
+			}else{
+				cromosoma[(k_max+(2*i))] = nuevo_y;
+			}
+
+		}
+		
 	}
 	return (cromosoma);
 }
@@ -62,17 +142,19 @@ mutar <- function(cromosoma, pm, k){
 #--------------------
 #Funcion de crossover
 #--------------------
-cruzar <- function(cromosomas_padres, pc){
+cruzar <- function(cromosomas_padres, pc, k_max){
 	#Creamos los hijos
 	cromosomas_hijos = cromosomas_padres; 
 
-	#Hace crossover entre dos cromosomas con probabilidad pc
-	if(runif(1) <= pc){
+	#Hace crossover entre dos cromosomas con probabilidad pc para cada elemento
+	mascara = sample(0:1, k_max, replace=TRUE, c((1-pc),pc));
+	for(i in 1:k_max){
+		if(mascara[i]){
 	
-		#Elije un locus desde donde empezar a cruzar y los cruza
-		posicion = sample(1:length(cromosomas_padres[1,]), 1);
-		cromosomas_hijos[1, 1:posicion] = cromosomas_padres[2, 1:posicion];
-		cromosomas_hijos[2, 1:posicion] = cromosomas_padres[1, 1:posicion];
+			#intercambiamos los locus
+			cromosomas_hijos[1, (k_max+(2*i - 1)):(k_max+(2*i))] = cromosomas_padres[2, (k_max+(2*i - 1)):(k_max+(2*i))];
+			cromosomas_hijos[2, (k_max+(2*i - 1)):(k_max+(2*i))] = cromosomas_padres[1, (k_max+(2*i - 1)):(k_max+(2*i))];
+		}
 		
 	}
 	return (cromosomas_hijos);
@@ -81,10 +163,13 @@ cruzar <- function(cromosomas_padres, pc){
 #-----------------------------------------------------
 #Funcion que elige una pareja en funcion de su fitness
 #-----------------------------------------------------
-elegir_pareja <- function(fitness){
+elegir_pareja <- function(fitness, pp){
 
-	#VER COMO IMPLEMENTAR LA FUNCION SAMPLE EN C!
-	return (sample(1:length(fitness), 2, replace=FALSE, prob=fitness));
+	#Toma pp soluciones aleatoreas y nos quedamos con las dos de mejor fitness	
+	soluciones <- sample(1:length(fitness), pp, replace=FALSE);
+	n <- length(soluciones);
+	return (sort(soluciones,partial=(n-1))[n:(n-1)]);
+	
 }
 
 #---------------------------------------
@@ -114,13 +199,16 @@ generar_dataset <- function(dim_red, puntos_por_cluster, parametro_de_red, ancho
 #Genera el dataset
 puntos <- generar_dataset(dim_red, puntos_por_cluster, parametro_de_red, ancho_del_clustero, alto_del_cluster);
 
-#Matriz de disimilaridad
-matriz_de_disimilaridad = dist(puntos);
+#Trae los valores maximos y minimos para cada dimension de los puntos
+valores_limite = matrix(0, ncol=2, nrow=2);
+valores_limite[1,1] = min(puntos[, 1]); #[1,1] es el minimo en x
+valores_limite[1,2] = max(puntos[, 1]); #[1,2] es el maximo en x
+valores_limite[2,1] = min(puntos[, 2]); #[2,1] es el minimo en y
+valores_limite[2,2] = max(puntos[, 2]); #[2,2] es el maximo en y
 
 #Matriz en blanco que va a guardar los cromosomas de la poblacion nueva despues de cada corrida
-#Cada cromosoma es una tira ordenada que asigna a cada posicion (cada punto) uno de los clusters posibles
-#de la red
-cromosomas_nuevos = matrix(0, ncol=(k_max * puntos_por_cluster), nrow=poblacion);
+#Cada cromosoma es una tira ordenada de k_max valores de activacion + 2k_max de la informacion de cada centroide
+cromosomas_nuevos = matrix(0, ncol=(3*k_max), nrow=poblacion);
 
 #Matriz que guarda el fitness de cada cromosoma
 fitness = matrix(0, ncol=1, nrow=poblacion);
@@ -128,18 +216,36 @@ fitness = matrix(0, ncol=1, nrow=poblacion);
 #Cantidad de cruzas por iteracion			
 cruzas = c(1: as.integer(poblacion/2));
 
+#Para el fitness de los cromosomas vamos a necesitar el promedio 
+#de la distancia de los puntos al centroide. Calculamos esto una sola vez.
+centroide = t(c(mean(puntos[, 1]), mean(puntos[, 2])));
+promedio = sum((puntos[, 1]-centroide[1])^2+(puntos[, 2]-centroide[2])^2);
+
 #Comienzan las corridas
 for(corrida in 1:corridas){
 
-	#Genera los cromosomas al azar de la corrida, entre 1 y la cantidad de puntos de la red
-	cromosomas = matrix(sample(1:k_max, poblacion*tamano_del_cromosoma, replace=TRUE), ncol=tamano_del_cromosoma);
+	#Genera los cromosomas al azar de la corrida. Primero los valores de activacion
+	cromosomas = matrix(runif(k_max*poblacion), ncol=k_max);
+	#Revisa que haya al menos dos con más de 0.5
+	for(i in 1:poblacion){
+		
+		#Si no hay dos con mas de 0.5 elige dos posiciones al azar y le pone dos numeros mayores a 0.5
+		if(length(which(cromosomas[i, ] > 0.5) < 2)){
+			va_a_cambiar = sample(1:k_max, 2, replace=FALSE);
+			cromosomas[i, va_a_cambiar[1]] = runif(1, min=0.5);
+			cromosomas[i, va_a_cambiar[2]] = runif(1, min=0.5);
+		}
+	}
+	#Ahora genera los centroides. Los genera dentro de los rangos maximos y minimos de los valores limite
+	cromosomas = cbind(cromosomas, matrix(runif(k_max*poblacion, min=valores_limite[1,1], max=valores_limite[1,2]), ncol=k_max));
+	cromosomas = cbind(cromosomas, matrix(runif(k_max*poblacion, min=valores_limite[2,1], max=valores_limite[2,2]), ncol=k_max));
 
-	#Generando las generaciones
+	#Generacionando
 	for(generacion in 1:generaciones){
 
 		#Calcula el fitness de los cromosomas
 		for(cromosoma in 1:poblacion){
-			fitness[cromosoma] = calcular_fitness(cromosomas[cromosoma, ], matriz_de_disimilaridad);
+			fitness[cromosoma] = calcular_fitness(cromosomas[cromosoma, ], promedio, k_max, puntos);
 		}
 		
 		if(generacion%%1 == 0){
@@ -147,15 +253,19 @@ for(corrida in 1:corridas){
 			print(generacion);
 		}
 
+		#Las soluciones con mejor fitness pasan inalteradas
+		indice_mejores_soluciones = sort(fitness, index.return=TRUE)$ix[n:(n-soluciones_de_elite + 1)];
+		mejores_soluciones = cromosomas[indice_mejores_soluciones, ];
+
 		#Cruza los cromosomas de acuerdo a su fitness. Cuanto mas fitness mas probabilidad de cruza. 
 		#Elige poblacion/2 parejas
 
 		pareja_actual = 1; #Indice de la nueva pareja en cada cruza, es interno a este bucle
 		for(cruza in cruzas){
 			#Elige la pareja a cruzar
-			pareja = elegir_pareja(fitness);
+			pareja = elegir_pareja(fitness, pp);
 			#La cruza y genera dos hijos
-			hijos = cruzar(cromosomas[pareja, ], pc);
+			hijos = cruzar(cromosomas[pareja, ], pc, k_max);
 			#Asigna a la nueva poblacion los dos hijos
 			cromosomas_nuevos[pareja_actual, ] = hijos[1, ];
 			cromosomas_nuevos[pareja_actual+1, ] = hijos[2, ];
@@ -163,30 +273,28 @@ for(corrida in 1:corridas){
 			pareja_actual = pareja_actual + 2;
 		}
 	
-
 		#Asignamos la nueva poblacion como la poblacion actual
 		cromosomas = cromosomas_nuevos;
 		
 		#Mutamos los nuevos cromosomas
 		for(cromosoma in 1:poblacion){
-			cromosoma_nuevo = mutar(cromosomas[cromosoma, ], pm, k);
-			#fitness_nuevo = calcular_fitness(cromosoma_nuevo, matriz_de_disimilaridad);
-			#if(fitness_nuevo > fitness[cromosoma] || runif(1) > exp(-(fitness_nuevo-fitness[cromosoma]))) {
-			#if(fitness_nuevo > fitness[cromosoma]) {
-				cromosomas[cromosoma, ] = cromosoma_nuevo;
-			#	fitness[cromosoma] = fitness_nuevo;
-			#}
+			cromosomas[cromosoma, ] = mutar(cromosomas[cromosoma, ], pm, k_max, alfa, epsilon, valores_limite);
 		
 		}
 		
+		#Descartamos los cambios a las soluciones de elite
+		cromosomas[indice_mejores_soluciones, ] = mejores_soluciones;		
+	
 	}
 	
 }
 
 #Muestra los mejores fitness
 graphics.off();
-print(cromosomas);
 plot(puntos[,1],puntos[,2]);
-points(puntos[,1],puntos[,2],col=rainbow(k)[cromosomas[1, ]],pch=20);
-dev.new();
-plot(silhouette(cromosomas[which.max(fitness), ], matriz_de_disimilaridad));
+mejor_cromosoma = cromosomas[which.max(fitness), ];
+ks_habilitados = which(mejor_cromosoma[1:8] >= 0.5);
+print(length(ks_habilitados));
+points(mejor_cromosoma[(k_max+(ks_habilitados*2)-1)],mejor_cromosoma[(k_max+(ks_habilitados*2))],col=rainbow(k_max),pch=20);
+
+
