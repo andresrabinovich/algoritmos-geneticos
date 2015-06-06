@@ -61,7 +61,7 @@ cruzar <- function(cromosomas_padres, pc){
 elegir_pareja <- function(fitness){
 
 	#VER COMO IMPLEMENTAR LA FUNCION SAMPLE EN C!
-	return (sample(1:length(fitness), 2, replace=FALSE, prob=fitness));
+	return (sample(1:length(fitness), 2, replace=FALSE, prob=(fitness/sum(fitness))));
 }
 
 #---------------------------------------
