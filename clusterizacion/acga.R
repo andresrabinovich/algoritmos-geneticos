@@ -17,7 +17,7 @@ alto_del_cluster = 0.1; #lo que mide el cluster en y
 #---------------------
 #Configuraciones de AG
 #---------------------
-poblacion = 40;
+poblacion = 10;
 pm = 0.1; #probabilidad de mutacion
 pc = 0.3; #probabilidad de single-point crossover
 pp = 3; #Cromosomas a seleccionar aleatoreamente en cada busqueda de padres
@@ -25,7 +25,7 @@ k_max = 10; #Maxima cantidad de clusters a buscar
 alfa = 0.1; #Amplitud de mutacion de valores de activacion
 epsilon = 0.3; #Amplitud de mutacion de centroides
 soluciones_de_elite = 4; #Las mejores soluciones pasan sin alteraciones a la proxima generacion
-generaciones = 500;
+generaciones = 1;
 corridas = 1;
 
 
@@ -166,9 +166,12 @@ cruzar <- function(cromosomas_padres, pc, k_max){
 elegir_pareja <- function(fitness, pp){
 
 	#Toma pp soluciones aleatoreas y nos quedamos con las dos de mejor fitness	
-	soluciones <- sample(1:length(fitness), pp, replace=FALSE);
-	n <- length(soluciones);
-	return (sort(soluciones,partial=(n-1))[n:(n-1)]);
+	cromosomas <- sample(1:length(fitness), pp, replace=FALSE);
+	pareja = c(0,0);
+	pareja[1] = which.max(fitness[cromosomas]);
+	fitness = fitness[-pareja[1]];
+	pareja[2] = which.max(fitness[cromosomas]);	
+	return (pareja);
 	
 }
 
@@ -249,12 +252,20 @@ for(corrida in 1:corridas){
 		}
 		
 		if(generacion%%1 == 0){
-			print(mean(fitness));
-			print(generacion);
+                        ibestf<-which.max(fitness);
+                        nn <- apply(cromosomas,1,function(x){ return(length(unique(x)))})
+			cat(paste("generacion:",generacion,"- fitness mean:sd:max:optimo", 
+				  signif(mean(fitness),2),
+				  signif(sd(fitness),2),
+			          signif(fitness[ibestf],2),
+				  signif(fitness_objetivo, 2),
+				  "\n"))
+			cat(paste("               - N mean:sd:max",
+			          mean(nn),sd(nn),nn[ibestf],"\n\n"))
 		}
 
 		#Las soluciones con mejor fitness pasan inalteradas
-		indice_mejores_soluciones = sort(fitness, index.return=TRUE)$ix[n:(n-soluciones_de_elite + 1)];
+		indice_mejores_soluciones = sort(fitness, index.return=TRUE)$ix[length(fitness):(length(fitness)-soluciones_de_elite + 1)];
 		mejores_soluciones = cromosomas[indice_mejores_soluciones, ];
 
 		#Cruza los cromosomas de acuerdo a su fitness. Cuanto mas fitness mas probabilidad de cruza. 

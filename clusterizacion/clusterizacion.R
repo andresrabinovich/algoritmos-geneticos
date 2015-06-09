@@ -8,22 +8,22 @@
 #---------------------------
 #Configuraciones del dataset
 #---------------------------
-poblacion = 50;
-pm = 0.5; #probabilidad de mutacion
-pc = 0.5; #probabilidad de single-point crossover
+poblacion = 100;
+pm = c(0.1, 0.05, 0.05); #probabilidad de mutacion
+pc = 0.1; #probabilidad de single-point crossover
 generaciones = 2500;
 corridas = 1;
 
 #---------------------
 #Configuraciones de AG
 #---------------------
-dim_red = 2; #los puntos en la red no son reales, son solo los lugares alrededor de los cuales se van a armar los clusters
-puntos_por_cluster = 10;
+dim_red = 3; #los puntos en la red no son reales, son solo los lugares alrededor de los cuales se van a armar los clusters
+puntos_por_cluster = 20;
 parametro_de_red = 1;
 ancho_del_cluster = 0.1; #lo que mide el cluster en x
 alto_del_cluster = 0.1; #lo que mide el cluster en y
-k_max = 25; #Maxima cantidad de clusters a buscar
-k_min = 2; #Minima cantidad de clusters a buscar
+k_max = 12; #Maxima cantidad de clusters a buscar
+k_min = 6; #Minima cantidad de clusters a buscar
 soluciones_de_elite = 4; #Las mejores soluciones pasan sin alteraciones a la proxima generacion
 
 #Setea la semilla aleatoria para tener resultados reproducibles
@@ -33,6 +33,7 @@ set.seed(123457)
 #CARGADO DE LIBRERIAS
 #////////////////////
 library(fpc);
+library(cluster);
 
 #/////////////////////////////////
 #COMIENZAN LAS FUNCIONES GENERICAS
@@ -53,7 +54,7 @@ mutar <- function(cromosoma, pm, k_max, k_min){
 	#Tres operadores de mutacion: mutar, mergear, splitear
 	
 	#Muta el cromosoma con probabilidad pm
-	if(runif(1) <= pm){
+	if(runif(1) <= pm[1]){
 
 		#Elije un locus al azar y lo cambia
 		posicion = sample(1:length(cromosoma), 1);
@@ -67,7 +68,7 @@ mutar <- function(cromosoma, pm, k_max, k_min){
 	
 	}
 	#Mergea dos clusters dentro del cromosomas con probabilidad pm
-	if(runif(1) <= pm){
+	if(runif(1) <= pm[2]){
 		#Cuantos clusters hay
 		clusters_en_cromosoma = unique(cromosoma);
 		
@@ -79,7 +80,7 @@ mutar <- function(cromosoma, pm, k_max, k_min){
 		}
 	}
 	#Splitea un cluster dentro del cromosomas con probabilidad pm
-	if(runif(1) <= pm){
+	if(runif(1) <= pm[3]){
 		#Elije un cluster al azar
 		clusters_en_cromosoma = unique(cromosoma);
 		
@@ -98,7 +99,7 @@ mutar <- function(cromosoma, pm, k_max, k_min){
 #--------------------
 #Funcion de crossover
 #--------------------
-cruzar <- function(cromosomas_padres, pc){
+cruzar <- function(cromosomas_padres, pc, k_min, k_max){
 	#Creamos los hijos
 	cromosomas_hijos = cromosomas_padres; 
 
@@ -110,6 +111,18 @@ cruzar <- function(cromosomas_padres, pc){
 		cromosomas_hijos[1, 1:posicion] = cromosomas_padres[2, 1:posicion];
 		cromosomas_hijos[2, 1:posicion] = cromosomas_padres[1, 1:posicion];
 		
+		#Obliga a los hijos a tener al menos k_min clusters
+		for(i in 1:2){
+			clusters_a_elegir = c(1:k_max);
+			if(length(unique(cromosomas_hijos[i, ])) < k_min){
+				#Se fija cual tiene mas de dos y flipea uno
+				clusters_a_elegir = clusters_a_elegir[-unique(cromosomas_hijos[i, ])];
+				cromosomas_hijos[i, which(table(cromosomas_hijos[i, ])[2] > 2)[[1]]] = sample(clusters_a_elegir, 1);
+
+			}
+		}
+
+		
 	}
 	return (cromosomas_hijos);
 }
@@ -119,8 +132,17 @@ cruzar <- function(cromosomas_padres, pc){
 #-----------------------------------------------------
 elegir_pareja <- function(fitness){
 
-	#VER COMO IMPLEMENTAR LA FUNCION SAMPLE EN C!
+	#Trae una pareja pesada por su fitness (cuanto mas fitness mas probabilidad de ser elegido)
 	return (sample(1:length(fitness), 2, replace=FALSE, prob=(fitness/sum(fitness))));
+
+	#Toma pp soluciones aleatoreas y nos quedamos con las dos de mejor fitness	
+	#pp = 20;
+	#cromosomas <- sample(1:length(fitness), pp, replace=FALSE);
+	#pareja = c(0,0);
+	#pareja[1] = which.max(fitness[cromosomas]);
+	#fitness = fitness[-pareja[1]];
+	#pareja[2] = which.max(fitness[cromosomas]);	
+	#return (pareja);
 }
 
 #---------------------------------------
@@ -168,33 +190,51 @@ cruzas = c(1: as.integer(poblacion/2));
 #Registro de fitness
 registro_de_fitness = matrix(0, ncol=1, nrow=generaciones);
 
+#Arranca el reloj para medir el tiempo de ejecucion
+comienzo_de_reloj <- proc.time()
+
+#Fitness objetivo es el mejor fitness que se puede lograr
+fitness_objetivo = calcular_fitness(puntos, rep(c(1:dim_red^2), each=puntos_por_cluster));
+
 #Comienzan las corridas
 for(corrida in 1:corridas){
 
 	#Genera los cromosomas al azar de la corrida, entre 1 y la cantidad de puntos de la red
 	cromosomas = matrix(sample(1:k_max, poblacion*total_de_puntos, replace=TRUE), ncol=total_de_puntos);
 
+	
+
 	#Generando las generaciones
 	for(generacion in 1:generaciones){
 
 		#Calcula el fitness de los cromosomas
 		for(cromosoma in 1:poblacion){
-			fitness[cromosoma] = calcular_fitness(puntos, cromosomas[cromosoma, ]);
+			fitness[cromosoma] = calcular_fitness(puntos, cromosomas[cromosoma, ]);	
 		}
+
 		registro_de_fitness[generacion] = mean(fitness);
 		
+
 		#Las soluciones con mejor fitness pasan inalteradas
-		indice_mejores_soluciones = sort(fitness, index.return=TRUE)$ix[length(fitness):(length(fitness)-soluciones_de_elite + 1)];
-		mejores_soluciones = cromosomas[indice_mejores_soluciones, ];		
+		if(soluciones_de_elite){
+			indice_mejores_soluciones = sort(fitness, index.return=TRUE)$ix[length(fitness):(length(fitness)-soluciones_de_elite + 1)];
+			mejores_soluciones = cromosomas[indice_mejores_soluciones, ];			
+		}
 		
 		if(generacion%%1 == 0){
                         ibestf<-which.max(fitness)
                         nn <- apply(cromosomas,1,function(x){ return(length(unique(x)))})
-			cat(paste("generacion:",generacion,"- fitness mean:sd:max", 
+			cat(paste("generacion:",generacion,"- fitness mean:sd:max:optimo", 
 				  signif(mean(fitness),2),signif(sd(fitness),2),
-			          signif(fitness[ibestf],2),"\n"))
+			          signif(fitness[ibestf],2),
+				  signif(fitness_objetivo, 2),
+				  "\n"))
 			cat(paste("               - N mean:sd:max",
 			          mean(nn),sd(nn),nn[ibestf],"\n\n"))
+		}
+
+		if(generacion == 10){
+			cat(paste("Tiempo estimado de ejecucion: ",((proc.time() - comienzo_de_reloj)[1]/10*generaciones),"\n"));
 		}
 
 		#Cruza los cromosomas de acuerdo a su fitness. Cuanto mas fitness mas probabilidad de cruza. 
@@ -205,7 +245,7 @@ for(corrida in 1:corridas){
 			#Elige la pareja a cruzar
 			pareja = elegir_pareja(fitness);
 			#La cruza y genera dos hijos
-			hijos = cruzar(cromosomas[pareja, ], pc);
+			hijos = cruzar(cromosomas[pareja, ], pc, k_min, k_max);
 			#Asigna a la nueva poblacion los dos hijos
 			cromosomas_nuevos[pareja_actual, ] = hijos[1, ];
 			cromosomas_nuevos[pareja_actual+1, ] = hijos[2, ];
@@ -223,15 +263,21 @@ for(corrida in 1:corridas){
 		}
 		
 		#Descartamos los cambios a las soluciones de elite
-		cromosomas[indice_mejores_soluciones, ] = mejores_soluciones;			
+		if(soluciones_de_elite) {
+			cromosomas[indice_mejores_soluciones, ] = mejores_soluciones;				
+		}
 		
 	}
 	
 }
 
+#Imprime lo que tardo en ejecutar el algoritmo
+print(proc.time() - comienzo_de_reloj);
+
 #Muestra los mejores fitness
 graphics.off();
-ibestf<-which.max(fitness);
+soluciones_buenas = which(fitness == max(fitness));
+ibestf<-soluciones_buenas[which(apply(cromosomas[soluciones_buenas, ], 1, function(x){length(unique(x))}) == (dim_red^2))[1]];
 plot(puntos[,1],puntos[,2]);
 points(puntos[,1],puntos[,2],col=rainbow(length(unique(cromosomas[ibestf, ])))[cromosomas[ibestf, ]],pch=20);
 dev.new();
