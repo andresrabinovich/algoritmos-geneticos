@@ -8,7 +8,7 @@
 #---------------------------
 #Configuraciones del dataset
 #---------------------------
-dim_red = 2; #los puntos en la red no son reales, son solo los lugares alrededor de los cuales se van a armar los clusters
+dim_red = 3; #los puntos en la red no son reales, son solo los lugares alrededor de los cuales se van a armar los clusters
 puntos_por_cluster = 10;
 parametro_de_red = 1;
 ancho_del_cluster = 0.1; #lo que mide el cluster en x
@@ -17,22 +17,22 @@ alto_del_cluster = 0.1; #lo que mide el cluster en y
 #---------------------
 #Configuraciones de AG
 #---------------------
-poblacion = 10;
+poblacion = 20;
 pm = 0.1; #probabilidad de mutacion
 pc = 0.3; #probabilidad de single-point crossover
 pp = 3; #Cromosomas a seleccionar aleatoreamente en cada busqueda de padres
-k_max = 10; #Maxima cantidad de clusters a buscar
+k_max = 12; #Maxima cantidad de clusters a buscar
 alfa = 0.1; #Amplitud de mutacion de valores de activacion
 epsilon = 0.3; #Amplitud de mutacion de centroides
 soluciones_de_elite = 4; #Las mejores soluciones pasan sin alteraciones a la proxima generacion
-generaciones = 1;
+generaciones = 500;
 corridas = 1;
 
 
 #////////////////////
 #CARGADO DE LIBRERIAS
 #////////////////////
-#library(fpc);
+
 
 #///////////////////////
 #COMIENZAN LAS FUNCIONES
@@ -168,9 +168,9 @@ elegir_pareja <- function(fitness, pp){
 	#Toma pp soluciones aleatoreas y nos quedamos con las dos de mejor fitness	
 	cromosomas <- sample(1:length(fitness), pp, replace=FALSE);
 	pareja = c(0,0);
-	pareja[1] = which.max(fitness[cromosomas]);
+	pareja[1] = cromosomas[which.max(fitness[cromosomas])];
 	fitness = fitness[-pareja[1]];
-	pareja[2] = which.max(fitness[cromosomas]);	
+	pareja[2] = cromosomas[which.max(fitness[cromosomas])];	
 	return (pareja);
 	
 }
@@ -192,7 +192,45 @@ generar_dataset <- function(dim_red, puntos_por_cluster, parametro_de_red, ancho
 	puntos <- matrix(0, nrow=total_de_puntos, ncol=2);
 	puntos[, 1] <- runif(total_de_puntos, -ancho_del_cluster, ancho_del_cluster) + rep(red[, 1], each=puntos_por_cluster);
 	puntos[, 2] <- runif(total_de_puntos, -alto_del_cluster, alto_del_cluster) + rep(red[, 2], each=puntos_por_cluster);
-	return (puntos);
+	return (list(puntos, red));
+}
+#-------------------------------------------------------------
+#Funcion para pasar de la representacion acga a la de clusters
+#-------------------------------------------------------------
+acga_a_cluster <- function(cromosoma, k_max, puntos){
+
+	#Incializa la tira que representa la solucion en el formato de clusters
+	tira = rep(0, nrow(puntos));
+
+	#Si el valor de activacion es mayor a 0.5 (i.e. esta activado) busca los puntos que pertenecen a ese cluster		
+	k_activos = which(cromosoma[1:k_max] >= 0.5);
+	#Asigna cada punto a un cluster por proximidad
+	for(punto in 1:nrow(puntos)){
+		
+		#Inicializa la distancia al cluster al que pertenece (inf = no pertenece a ninguno)		
+		distancia_a_k = Inf;
+		k = 0; #El cluster al que va a pertenecer
+		for(i in k_activos){
+			#Si la distancia a este centroide es la mas chica, se lo asigno al centroide
+			distancia_a_i = (puntos[punto, 1] - cromosoma[(k_max + (2*i - 1))])^2 + (puntos[punto, 2] - cromosoma[(k_max + (2*i))])^2
+			if(distancia_a_i < distancia_a_k) {
+				distancia_a_k = distancia_a_i;
+				k = i;
+			}
+		}
+		#Asigna el punto al cluster mas cercano
+		tira[punto] = k; 
+	}
+	#Ordena la lista para que no queden agujeros entre los clusters (el 111133335555 tiene que ser 111122223333)
+	k_actual = 1
+	for(i in k_activos){
+		elementos_a_modificar = which(tira == i);
+		if(length(elementos_a_modificar)){
+			tira[elementos_a_modificar] = k_actual;
+			k_actual = k_actual + 1;
+		}
+	}
+	return (tira);
 }
 
 #////////////////////
@@ -200,7 +238,9 @@ generar_dataset <- function(dim_red, puntos_por_cluster, parametro_de_red, ancho
 #////////////////////
 
 #Genera el dataset
-puntos <- generar_dataset(dim_red, puntos_por_cluster, parametro_de_red, ancho_del_clustero, alto_del_cluster);
+dataset <- generar_dataset(dim_red, puntos_por_cluster, parametro_de_red, ancho_del_clustero, alto_del_cluster);
+puntos  = dataset[[1]];
+red 	= dataset[[2]];
 
 #Trae los valores maximos y minimos para cada dimension de los puntos
 valores_limite = matrix(0, ncol=2, nrow=2);
@@ -224,6 +264,22 @@ cruzas = c(1: as.integer(poblacion/2));
 centroide = t(c(mean(puntos[, 1]), mean(puntos[, 2])));
 promedio = sum((puntos[, 1]-centroide[1])^2+(puntos[, 2]-centroide[2])^2);
 
+#Registro de fitness
+registro_de_fitness = matrix(0, ncol=1, nrow=generaciones);
+
+#Fitness objetivo es el mejor fitness que se puede lograr, la solucion es cromsoma_objetivo
+cromosoma_objetivo = matrix(c(rep(0.5, dim_red^2), rep(0, (k_max-dim_red^2))), nrow=1);
+for(i in 1:dim_red^2){
+	cromosoma_objetivo = cbind(cromosoma_objetivo, t(red[i, ]));
+}
+for(i in (dim_red^2+1):k_max){
+	cromosoma_objetivo = cbind(cromosoma_objetivo, t(c(0,0)));
+}
+fitness_objetivo = calcular_fitness(cromosoma_objetivo, promedio, k_max, puntos);
+
+#Arranca el reloj para medir el tiempo de ejecucion
+comienzo_de_reloj <- proc.time()
+
 #Comienzan las corridas
 for(corrida in 1:corridas){
 
@@ -240,8 +296,14 @@ for(corrida in 1:corridas){
 		}
 	}
 	#Ahora genera los centroides. Los genera dentro de los rangos maximos y minimos de los valores limite
-	cromosomas = cbind(cromosomas, matrix(runif(k_max*poblacion, min=valores_limite[1,1], max=valores_limite[1,2]), ncol=k_max));
-	cromosomas = cbind(cromosomas, matrix(runif(k_max*poblacion, min=valores_limite[2,1], max=valores_limite[2,2]), ncol=k_max));
+	centroides = matrix(0, ncol=(2*k_max), nrow=poblacion);
+	for(i in 1:poblacion){
+		for(j in 1:k_max){
+			centroides[i, (2*j - 1)] = runif(1, min=valores_limite[1,1], max=valores_limite[1,2]);
+			centroides[i, (2*j)] = runif(1, min=valores_limite[2,1], max=valores_limite[2,2]);
+		}
+	}
+	cromosomas = cbind(cromosomas, centroides);
 
 	#Generacionando
 	for(generacion in 1:generaciones){
@@ -249,19 +311,25 @@ for(corrida in 1:corridas){
 		#Calcula el fitness de los cromosomas
 		for(cromosoma in 1:poblacion){
 			fitness[cromosoma] = calcular_fitness(cromosomas[cromosoma, ], promedio, k_max, puntos);
-		}
+		}		
+
+		registro_de_fitness[generacion] = mean(fitness);
 		
 		if(generacion%%1 == 0){
                         ibestf<-which.max(fitness);
-                        nn <- apply(cromosomas,1,function(x){ return(length(unique(x)))})
+                        #nn <- apply(cromosomas,1,function(x){ return(length(unique(x)))})
 			cat(paste("generacion:",generacion,"- fitness mean:sd:max:optimo", 
 				  signif(mean(fitness),2),
 				  signif(sd(fitness),2),
 			          signif(fitness[ibestf],2),
 				  signif(fitness_objetivo, 2),
 				  "\n"))
-			cat(paste("               - N mean:sd:max",
-			          mean(nn),sd(nn),nn[ibestf],"\n\n"))
+			#cat(paste("               - N mean:sd:max",
+			#          mean(nn),sd(nn),nn[ibestf],"\n\n"))
+		}
+
+		if(generacion == 10){
+			cat(paste("Tiempo estimado de ejecucion: ",((proc.time() - comienzo_de_reloj)[1]/10*generaciones),"\n"));
 		}
 
 		#Las soluciones con mejor fitness pasan inalteradas
@@ -299,13 +367,19 @@ for(corrida in 1:corridas){
 	}
 	
 }
+#Imprime lo que tardo en ejecutar el algoritmo
+print(proc.time() - comienzo_de_reloj);
 
 #Muestra los mejores fitness
 graphics.off();
+soluciones_buenas = which(fitness == max(fitness));
+#ibestf<-soluciones_buenas[which(apply(cromosomas[soluciones_buenas, ], 1, function(x,k_maximo){length(which(x[1:k_maximo] >= 0.5))}, k_maximo=k_max) == (dim_red^2))[1]]
+ibestf<-soluciones_buenas[1];
+mejor_solucion = acga_a_cluster(cromosomas[ibestf, ], k_max, puntos);
 plot(puntos[,1],puntos[,2]);
-mejor_cromosoma = cromosomas[which.max(fitness), ];
-ks_habilitados = which(mejor_cromosoma[1:8] >= 0.5);
-print(length(ks_habilitados));
-points(mejor_cromosoma[(k_max+(ks_habilitados*2)-1)],mejor_cromosoma[(k_max+(ks_habilitados*2))],col=rainbow(k_max),pch=20);
-
+points(puntos[,1],puntos[,2],col=rainbow(length(unique(mejor_solucion)))[mejor_solucion],pch=20);
+dev.new();
+plot(silhouette(mejor_solucion, dist(puntos)));
+dev.new()
+plot(registro_de_fitness);
 

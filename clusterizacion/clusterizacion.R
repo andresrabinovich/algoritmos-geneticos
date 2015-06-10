@@ -190,19 +190,17 @@ cruzas = c(1: as.integer(poblacion/2));
 #Registro de fitness
 registro_de_fitness = matrix(0, ncol=1, nrow=generaciones);
 
-#Arranca el reloj para medir el tiempo de ejecucion
-comienzo_de_reloj <- proc.time()
-
 #Fitness objetivo es el mejor fitness que se puede lograr
 fitness_objetivo = calcular_fitness(puntos, rep(c(1:dim_red^2), each=puntos_por_cluster));
+
+#Arranca el reloj para medir el tiempo de ejecucion
+comienzo_de_reloj <- proc.time()
 
 #Comienzan las corridas
 for(corrida in 1:corridas){
 
 	#Genera los cromosomas al azar de la corrida, entre 1 y la cantidad de puntos de la red
 	cromosomas = matrix(sample(1:k_max, poblacion*total_de_puntos, replace=TRUE), ncol=total_de_puntos);
-
-	
 
 	#Generando las generaciones
 	for(generacion in 1:generaciones){
