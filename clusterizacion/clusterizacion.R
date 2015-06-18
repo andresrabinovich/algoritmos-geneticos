@@ -9,10 +9,11 @@
 #Configuraciones del dataset
 #---------------------------
 poblacion = 100;
-pm = c(0.1, 0.05, 0.05); #probabilidad de mutacion
+pm = c(0.1, 0.1, 0.1); #probabilidad de mutacion
 pc = 0.1; #probabilidad de single-point crossover
 generaciones = 2500;
 corridas = 1;
+pp = 4; #Cuantos elementos de la poblacion se toman para elegir los padres
 
 #---------------------
 #Configuraciones de AG
@@ -22,8 +23,8 @@ puntos_por_cluster = 20;
 parametro_de_red = 1;
 ancho_del_cluster = 0.1; #lo que mide el cluster en x
 alto_del_cluster = 0.1; #lo que mide el cluster en y
-k_max = 12; #Maxima cantidad de clusters a buscar
-k_min = 6; #Minima cantidad de clusters a buscar
+k_max = 20; #Maxima cantidad de clusters a buscar
+k_min = 2; #Minima cantidad de clusters a buscar
 soluciones_de_elite = 4; #Las mejores soluciones pasan sin alteraciones a la proxima generacion
 
 #Setea la semilla aleatoria para tener resultados reproducibles
@@ -42,8 +43,9 @@ library(cluster);
 #------------------
 #Funcion de fitness
 #------------------
-calcular_fitness <- function(puntos, cromosoma){
+calcular_fitness <- function(puntos, cromosoma, distancia){
 	#Vamos a probar con el indice de Calinski-Harabasz (ch)
+	#return (summary(silhouette(cromosoma, distancia))$avg.width); 
 	return (calinhara(puntos, cromosoma));
 }
 
@@ -53,20 +55,24 @@ calcular_fitness <- function(puntos, cromosoma){
 mutar <- function(cromosoma, pm, k_max, k_min){
 	#Tres operadores de mutacion: mutar, mergear, splitear
 	
+	
+	longitud_cromosoma = length(cromosoma);
 	#Muta el cromosoma con probabilidad pm
-	if(runif(1) <= pm[1]){
+	mutaciones = runif(longitud_cromosoma);
+	for(posicion in 1:longitud_cromosoma){
+		if(mutaciones[posicion] <= pm[1]){
 
-		#Elije un locus al azar y lo cambia
-		posicion = sample(1:length(cromosoma), 1);
-		red<-c(1:k_max);
-		red<-red[-cromosoma[posicion]];	#Sacamos como posibilidad que la mutacion lo deje en el mismo lugar	
-		cluster_anterior_a_la_mutacion = cromosoma[posicion]; #Guardamos la mutacion anterior
-		cromosoma[posicion] = sample(red, 1);
-		#Si la mutacion provoco que la solucion tenga menos clusters que el minimo, volvemos el cambio para atras
-		if(length(unique(cromosoma)) < k_min) cromosoma[posicion] = cluster_anterior_a_la_mutacion;
+			#Elije un locus al azar y lo cambia
+			#red<-c(1:k_max);
+			#red<-red[-cromosoma[posicion]];	#Sacamos como posibilidad que la mutacion lo deje en el mismo lugar	
+			#cluster_anterior_a_la_mutacion = cromosoma[posicion]; #Guardamos la mutacion anterior
+			cromosoma[posicion] = sample(1:k_max, 1);
+			#Si la mutacion provoco que la solucion tenga menos clusters que el minimo, volvemos el cambio para atras
+			#if(length(unique(cromosoma)) < k_min) cromosoma[posicion] = cluster_anterior_a_la_mutacion;
 		
 	
-	}
+		}
+	}	
 	#Mergea dos clusters dentro del cromosomas con probabilidad pm
 	if(runif(1) <= pm[2]){
 		#Cuantos clusters hay
@@ -87,10 +93,11 @@ mutar <- function(cromosoma, pm, k_max, k_min){
 		#Elije un cluster al azar y lo divide (elige en realidad dos clusters al azar,
 		#uno el que va a dividir, el otro el que va a usar para asignar 
 		#a la mitad de los elementos del primero).
-		clusters_a_dividir = sample(clusters_en_cromosoma, 2, replace=FALSE);
-		elementos_del_cluster_a_dividir = which(cromosoma==clusters_a_dividir[1]);
+		cluster_a_dividir = sample(clusters_en_cromosoma, 1, replace=FALSE);
+		elementos_del_cluster_a_dividir = which(cromosoma==cluster_a_dividir);
+		cluster_nuevo = sample(1:k_max, 1);
 		
-		cromosoma[elementos_del_cluster_a_dividir[1:ceiling(length(elementos_del_cluster_a_dividir)/2)]]=clusters_a_dividir[2];	
+		cromosoma[elementos_del_cluster_a_dividir[1:ceiling(length(elementos_del_cluster_a_dividir)/2)]]=cluster_nuevo;	
 	}			
 	
 	return (cromosoma);
@@ -130,19 +137,18 @@ cruzar <- function(cromosomas_padres, pc, k_min, k_max){
 #-----------------------------------------------------
 #Funcion que elige una pareja en funcion de su fitness
 #-----------------------------------------------------
-elegir_pareja <- function(fitness){
+elegir_pareja <- function(fitness, pp){
 
 	#Trae una pareja pesada por su fitness (cuanto mas fitness mas probabilidad de ser elegido)
-	return (sample(1:length(fitness), 2, replace=FALSE, prob=(fitness/sum(fitness))));
+	#return (sample(1:length(fitness), 2, replace=FALSE, prob=(fitness/sum(fitness))));
 
 	#Toma pp soluciones aleatoreas y nos quedamos con las dos de mejor fitness	
-	#pp = 20;
-	#cromosomas <- sample(1:length(fitness), pp, replace=FALSE);
-	#pareja = c(0,0);
-	#pareja[1] = which.max(fitness[cromosomas]);
-	#fitness = fitness[-pareja[1]];
-	#pareja[2] = which.max(fitness[cromosomas]);	
-	#return (pareja);
+	cromosomas <- sample(1:length(fitness), pp, replace=FALSE);
+	pareja = c(0,0);
+	pareja[1] = cromosomas[which.max(fitness[cromosomas])];
+	fitness = fitness[-pareja[1]];
+	pareja[2] = cromosomas[which.max(fitness[cromosomas])];	
+	return (pareja);
 }
 
 #---------------------------------------
@@ -187,11 +193,14 @@ fitness = matrix(0, ncol=1, nrow=poblacion);
 #Cantidad de cruzas por iteracion			
 cruzas = c(1: as.integer(poblacion/2));
 
-#Registro de fitness
+#Registro de fitness y de maximo N, con sus errores
 registro_de_fitness = matrix(0, ncol=1, nrow=generaciones);
+registro_de_error_fitness = matrix(0, ncol=1, nrow=generaciones);
+registro_de_n = matrix(0, ncol=1, nrow=generaciones);
+registro_de_error_n = matrix(0, ncol=1, nrow=generaciones);
 
 #Fitness objetivo es el mejor fitness que se puede lograr
-fitness_objetivo = calcular_fitness(puntos, rep(c(1:dim_red^2), each=puntos_por_cluster));
+fitness_objetivo = calcular_fitness(puntos, rep(c(1:dim_red^2), each=puntos_por_cluster), matriz_de_disimilaridad);
 
 #Arranca el reloj para medir el tiempo de ejecucion
 comienzo_de_reloj <- proc.time()
@@ -207,10 +216,11 @@ for(corrida in 1:corridas){
 
 		#Calcula el fitness de los cromosomas
 		for(cromosoma in 1:poblacion){
-			fitness[cromosoma] = calcular_fitness(puntos, cromosomas[cromosoma, ]);	
+			fitness[cromosoma] = calcular_fitness(puntos, cromosomas[cromosoma, ], matriz_de_disimilaridad);	
 		}
 
 		registro_de_fitness[generacion] = mean(fitness);
+		registro_de_error_fitness[generacion] = sd(fitness)
 		
 
 		#Las soluciones con mejor fitness pasan inalteradas
@@ -229,6 +239,8 @@ for(corrida in 1:corridas){
 				  "\n"))
 			cat(paste("               - N mean:sd:max",
 			          mean(nn),sd(nn),nn[ibestf],"\n\n"))
+			registro_de_n[generacion] = nn[ibestf];
+			registro_de_error_n[generacion] = sd(nn);
 		}
 
 		if(generacion == 10){
@@ -241,7 +253,7 @@ for(corrida in 1:corridas){
 		pareja_actual = 1; #Indice de la nueva pareja en cada cruza, es interno a este bucle
 		for(cruza in cruzas){
 			#Elige la pareja a cruzar
-			pareja = elegir_pareja(fitness);
+			pareja = elegir_pareja(fitness, pp);
 			#La cruza y genera dos hijos
 			hijos = cruzar(cromosomas[pareja, ], pc, k_min, k_max);
 			#Asigna a la nueva poblacion los dos hijos
@@ -275,10 +287,18 @@ print(proc.time() - comienzo_de_reloj);
 #Muestra los mejores fitness
 graphics.off();
 soluciones_buenas = which(fitness == max(fitness));
-ibestf<-soluciones_buenas[which(apply(cromosomas[soluciones_buenas, ], 1, function(x){length(unique(x))}) == (dim_red^2))[1]];
+#ibestf<-soluciones_buenas[which(apply(cromosomas[soluciones_buenas, ], 1, function(x){length(unique(x))}) == (dim_red^2))[1]];
+ibestf<-soluciones_buenas[1];
 plot(puntos[,1],puntos[,2]);
 points(puntos[,1],puntos[,2],col=rainbow(length(unique(cromosomas[ibestf, ])))[cromosomas[ibestf, ]],pch=20);
 dev.new();
 plot(silhouette(cromosomas[ibestf, ], matriz_de_disimilaridad));
+x = 1:generaciones;
 dev.new()
-plot(registro_de_fitness);
+plot(x, registro_de_fitness);
+arrows(x, registro_de_fitness-registro_de_error_fitness, x, registro_de_fitness+registro_de_error_fitness, length=0.05, angle=90, code=3)
+dev.new()
+plot(x, registro_de_n);
+#Con esto grafica barras de error
+arrows(x, registro_de_n-registro_de_error_n, x, registro_de_n+registro_de_error_n, length=0.05, angle=90, code=3)
+

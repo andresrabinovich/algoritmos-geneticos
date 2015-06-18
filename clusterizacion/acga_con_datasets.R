@@ -178,20 +178,12 @@ elegir_pareja <- function(fitness, pp){
 #---------------------------------------
 #Funcion para generar el dataset inicial
 #---------------------------------------
-generar_dataset <- function(dim_red, puntos_por_cluster, parametro_de_red, ancho_del_clustero, alto_del_cluster){
-	#genero la red equiespaciada
-	a <- seq(1, dim_red*parametro_de_red, parametro_de_red);
-	red <- matrix(data=a, nrow=dim_red^2, ncol=2);
-	red[, 1] <- rep(a, each=dim_red);
+generar_dataset <- function(dataset){
+	#Trae los centroides de ground truth
+	red = as.matrix(read.table(paste("datasets/", dataset ,"-cb.txt", sep="")))
 
-	#genero los puntos de datos alrededor de la red
-	puntos_en_la_red <- dim_red^2;
-	total_de_puntos <- puntos_en_la_red * puntos_por_cluster;
-
-	#Genero los puntos de los clusters
-	puntos <- matrix(0, nrow=total_de_puntos, ncol=2);
-	puntos[, 1] <- runif(total_de_puntos, -ancho_del_cluster, ancho_del_cluster) + rep(red[, 1], each=puntos_por_cluster);
-	puntos[, 2] <- runif(total_de_puntos, -alto_del_cluster, alto_del_cluster) + rep(red[, 2], each=puntos_por_cluster);
+	#Trae todos los puntos
+	puntos = as.matrix(read.table(paste("datasets/", dataset ,".txt", sep="")))
 	return (list(puntos, red));
 }
 #-------------------------------------------------------------
@@ -238,7 +230,7 @@ acga_a_cluster <- function(cromosoma, k_max, puntos){
 #////////////////////
 
 #Genera el dataset
-dataset <- generar_dataset(dim_red, puntos_por_cluster, parametro_de_red, ancho_del_clustero, alto_del_cluster);
+dataset <- generar_dataset("s2");
 puntos  = dataset[[1]];
 red 	= dataset[[2]];
 
@@ -271,13 +263,15 @@ registro_de_n = matrix(0, ncol=1, nrow=generaciones);
 registro_de_error_n = matrix(0, ncol=1, nrow=generaciones);
 
 #Fitness objetivo es el mejor fitness que se puede lograr, la solucion es cromsoma_objetivo
-cromosoma_objetivo = matrix(c(rep(0.5, dim_red^2), rep(0, (k_max-dim_red^2))), nrow=1);
-for(i in 1:dim_red^2){
+dim_red = nrow(red);
+cromosoma_objetivo = matrix(c(rep(0.5, dim_red), rep(0, (k_max-dim_red))), nrow=1);
+for(i in 1:dim_red){
 	cromosoma_objetivo = cbind(cromosoma_objetivo, t(red[i, ]));
 }
-for(i in (dim_red^2+1):k_max){
+for(i in (dim_red+1):k_max){
 	cromosoma_objetivo = cbind(cromosoma_objetivo, t(c(0,0)));
 }
+
 fitness_objetivo = calcular_fitness(cromosoma_objetivo, promedio, k_max, puntos);
 
 #Arranca el reloj para medir el tiempo de ejecucion
