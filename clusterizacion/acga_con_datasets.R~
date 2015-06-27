@@ -8,12 +8,11 @@
 #---------------------------
 #Configuraciones del dataset
 #---------------------------
-#dim_red = 4; #los puntos en la red no son reales, son solo los lugares alrededor de los cuales se van a armar los clusters
-#puntos_por_cluster = 50;
-#parametro_de_red = 1;
-#ancho_del_cluster = 0.1; #lo que mide el cluster en x
-#alto_del_cluster = 0.1; #lo que mide el cluster en y
-nombre_dataset = "s2";
+dim_red = 4; #los puntos en la red no son reales, son solo los lugares alrededor de los cuales se van a armar los clusters
+puntos_por_cluster = 50;
+parametro_de_red = 1;
+ancho_del_cluster = 0.1; #lo que mide el cluster en x
+alto_del_cluster = 0.1; #lo que mide el cluster en y
 
 #---------------------
 #Configuraciones de AG
@@ -42,7 +41,7 @@ corridas = 1;
 #------------------
 #Funcion de fitness
 #------------------
-calcular_fitness <- function(cromosoma, promedio, k_max, puntos, distancias_anteriores, clusters_anteriores, cambios){
+calcular_fitness <- function(cromosoma, promedio, k_max, puntos){
 
 	#Va a usar como funcion de fitness el indice Calinski-Harabasz 
 	#Guarda la distancia de cada punto a su correspondiente cluster
@@ -231,7 +230,7 @@ acga_a_cluster <- function(cromosoma, k_max, puntos){
 #////////////////////
 
 #Genera el dataset
-dataset <- generar_dataset(nombre_dataset);
+dataset <- generar_dataset("s2");
 puntos  = dataset[[1]];
 red 	= dataset[[2]];
 
@@ -263,18 +262,6 @@ registro_de_error_fitness = matrix(0, ncol=1, nrow=generaciones);
 registro_de_n = matrix(0, ncol=1, nrow=generaciones);
 registro_de_error_n = matrix(0, ncol=1, nrow=generaciones);
 
-#Lleva control de los cambios que se hicieron sobre cada cromosoma 
-#(k_max para los valores de activacion y k_max para los clusters)
-#Esto evita procesar varias veces lo mismo en la funcion de fitness	
-cambios = matrix(0, nrow=poblacion, ncol=2*k_max);
-
-#Lleva control de las distancias entre cada punto y sus clusters respectivos en la corrida anterior y en la nueva y los
-#swapea. Asi se evita tener que procesar las cosas mas veces de las necesarias
-distancias_anteriores = matrix(Inf, nrow=poblacion, ncol=nrow(puntos));
-distancias_nuevas = distancias_anteriores;
-clusters_anteriores = matrix(0, nrow=poblacion, ncol=nrow(puntos));
-clusters_nuevos = clusters_anteriores;
-
 #Fitness objetivo es el mejor fitness que se puede lograr, la solucion es cromsoma_objetivo
 dim_red = nrow(red);
 cromosoma_objetivo = matrix(c(rep(0.5, dim_red), rep(0, (k_max-dim_red))), nrow=1);
@@ -285,12 +272,9 @@ for(i in (dim_red+1):k_max){
 	cromosoma_objetivo = cbind(cromosoma_objetivo, t(c(0,0)));
 }
 
-datos_fitness = calcular_fitness(cromosoma_objetivo, promedio, k_max, puntos, distancias_anteriores, clusters_anteriores, cambios);
-fitness_objetivo <- datos_fitness[[1]];
+fitness_objetivo = calcular_fitness(cromosoma_objetivo, promedio, k_max, puntos);
 
 #Arranca el reloj para medir el tiempo de ejecucion
-##:ess-bp-start::browser@nil:##
-browser(expr=is.null(.ESSBP.[["@2@"]]))##:ess-bp-end:##
 comienzo_de_reloj <- proc.time()
 
 #Comienzan las corridas
@@ -323,7 +307,7 @@ for(corrida in 1:corridas){
 
 		#Calcula el fitness de los cromosomas
 		for(cromosoma in 1:poblacion){
-			fitness[cromosoma] = calcular_fitness(cromosomas[cromosoma, ], promedio, k_max, puntos, distancias_anteriores, clusters_anteriores, cambios);
+			fitness[cromosoma] = calcular_fitness(cromosomas[cromosoma, ], promedio, k_max, puntos);
 		}		
 
 		registro_de_fitness[generacion] = mean(fitness);
@@ -351,6 +335,7 @@ for(corrida in 1:corridas){
 		#Las soluciones con mejor fitness pasan inalteradas
 		indice_mejores_soluciones = sort(fitness, index.return=TRUE)$ix[length(fitness):(length(fitness)-soluciones_de_elite + 1)];
 		mejores_soluciones = cromosomas[indice_mejores_soluciones, ];
+
 		#Cruza los cromosomas de acuerdo a su fitness. Cuanto mas fitness mas probabilidad de cruza. 
 		#Elige poblacion/2 parejas
 

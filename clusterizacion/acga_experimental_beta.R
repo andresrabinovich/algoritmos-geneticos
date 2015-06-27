@@ -17,8 +17,8 @@ alto_del_cluster = 0.1; #lo que mide el cluster en y
 #---------------------
 #Configuraciones de AG
 #---------------------
-poblacion = 3;
-pm = 0.1; #probabilidad de mutacion
+poblacion = 4;
+pm = 0.0; #probabilidad de mutacion
 pc = 0.3; #probabilidad de single-point crossover
 pp = 2; #Cromosomas a seleccionar aleatoreamente en cada busqueda de padres
 k_max = 5; #Maxima cantidad de clusters a buscar
@@ -45,19 +45,12 @@ calcular_fitness <- function(cromosoma, promedio, k_max, puntos, distancias_ante
 
 	#Va a usar como funcion de fitness el indice Calinski-Harabasz 
 
-	#Cuantos clusters hay habilitados
-	clusters = 0;
-	for(i in 1:k_max){
-		#Si el valor de activacion es mayor a 0.5 (i.e. esta activado) busca los puntos que pertenecen a ese cluster		
-		if(cromosoma[i] >= 0.5) clusters = clusters + 1;
-	}
-	
+	#Si el valor de activacion es mayor a 0.5 (i.e. esta activado) busca los puntos que pertenecen a ese cluster		
+	k_activos = which(cromosoma[1:k_max] >= 0.5);
+	clusters = length(k_activos);
 	#Si solo hay un cluster, devuelve 0
 	if(clusters < 2) return (0);
 
-	#Si el valor de activacion es mayor a 0.5 (i.e. esta activado) busca los puntos que pertenecen a ese cluster		
-	k_activos = which(cromosoma[1:k_max] >= 0.5);
-	
 	#La primera corrida tiene la suma de distancias_anteriores en 0
 	if(sum(distancias_anteriores) == 0 || TRUE){
 
@@ -91,7 +84,7 @@ calcular_fitness <- function(cromosoma, promedio, k_max, puntos, distancias_ante
 		for(i in 1:k_max){
 			#Hubo un cambio tipo 1 o 2, se fija cual
 			if(cambios[i]){
-				if(cromosoma[i] < 0.5){ #Se apago un cluster, agrega sus puntos a los puntos a recalcular
+                            if(cromosoma[i] < 0.5){ #Se apago un cluster, agrega sus puntos a los puntos a recalcular
 					puntos_a_recalcular <- cbind(puntos_a_recalcular, which(clusters_anteriores == i));
 				}else{	#Se prendio un cluster, lo agrega a la lista de clusters prendidos
 					clusters_prendidos <- cbind(clusters_prendidos, i);
@@ -234,7 +227,7 @@ cruzar <- function(cromosomas_padres, pc, k_max){
 		
 	}
 	#Cambios indica que clusters sufrieron modificaciones para evitar reprocesar los que no fueron modificados
-	cambios[1, ] <- cbind(t(rep(0, k_max)), t(mascara));
+        cambios[1, ] <- cbind(t(rep(0, k_max)), t(mascara));
 	cambios[2, ] <- cambios[1, ];
 	return (list(cromosomas_hijos, cambios));
 }
@@ -244,13 +237,10 @@ cruzar <- function(cromosomas_padres, pc, k_max){
 #-----------------------------------------------------
 elegir_pareja <- function(fitness, pp){
 
-	#Toma pp soluciones aleatoreas y nos quedamos con las dos de mejor fitness	
-	cromosomas <- sample(1:length(fitness), pp, replace=FALSE);
-	pareja = c(0,0);
-	pareja[1] = cromosomas[which.max(fitness[cromosomas])];
-	fitness = fitness[-pareja[1]];
-	pareja[2] = cromosomas[which.max(fitness[cromosomas])];	
-	return (pareja);
+	#Toma pp soluciones aleatoreas y nos quedamos con las dos de mejor fitness
+	cromosomas<-sample(1:length(fitness), pp, replace=FALSE);
+	cromosomas_ordenados <- sort(fitness[cromosomas], decreasing = TRUE, index.return = TRUE);
+	return (cromosomas[cromosomas_ordenados$ix[1:2]]);
 	
 }
 
@@ -361,8 +351,8 @@ clusters_nuevos = clusters_anteriores;
 
 #Fitness objetivo es el mejor fitness que se puede lograr, la solucion es cromsoma_objetivo
 cromosoma_objetivo = matrix(c(rep(0.5, dim_red^2), rep(0, (k_max-dim_red^2))), nrow=1);
-for(i in 1:dim_red^2){
-	cromosoma_objetivo = cbind(cromosoma_objetivo, t(red[i, ]));
+for(i in 1:(dim_red^2)){
+    cromosoma_objetivo = cbind(cromosoma_objetivo, t(red[i, ]));
 }
 for(i in (dim_red^2+1):k_max){
 	cromosoma_objetivo = cbind(cromosoma_objetivo, t(c(0,0)));
@@ -409,10 +399,7 @@ for(corrida in 1:corridas){
 			fitness[cromosoma] <- datos_fitness[[1]];
 			distancias_anteriores[cromosoma, ] <- datos_fitness[[2]];
 			clusters_anteriores[cromosoma, ] <- datos_fitness[[3]];
-			print(cromosoma);
-			print(distancias_anteriores[cromosoma, ]);
 		}		
-		print(distancias_anteriores);
 		registro_de_fitness[generacion] = mean(fitness);
 		
 		if(generacion%%1 == 0){
@@ -460,9 +447,9 @@ for(corrida in 1:corridas){
 			#Agrega dos al indice de nuevas parejas
 			pareja_actual = pareja_actual + 2;
 		}
-	
+                
 		#Asignamos la nueva poblacion como la poblacion actual
-		cromosomas = cromosomas_nuevos;
+                cromosomas = cromosomas_nuevos;
 		distancias_anteriores = distancias_nuevas;
 		clusters_anteriores = clusters_nuevos;
 
@@ -477,9 +464,9 @@ for(corrida in 1:corridas){
 		}
 		
 		#Descartamos las peores soluciones y las reemplazamos por las soluciones de elite
-		indice_peores_soluciones = sort(fitness, index.return=TRUE, decreasing=TRUE)$ix[length(fitness):(length(fitness)-soluciones_de_elite + 1)];
-		cromosomas[indice_peores_soluciones, ] = mejores_soluciones;
-		cambios[indice_peores_soluciones, ] = rep(0, 2*k_max);
+		#indice_peores_soluciones = sort(fitness, index.return=TRUE, decreasing=TRUE)$ix[length(fitness):(length(fitness)-soluciones_de_elite + 1)];
+		#cromosomas[indice_peores_soluciones, ] = mejores_soluciones;
+		#cambios[indice_peores_soluciones, ] = rep(0, 2*k_max);
 	
 	}
 	
