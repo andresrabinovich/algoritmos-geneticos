@@ -8,8 +8,8 @@
 #---------------------------
 #Configuraciones del dataset
 #---------------------------
-dim_red = 4; #los puntos en la red no son reales, son solo los lugares alrededor de los cuales se van a armar los clusters
-puntos_por_cluster = 50;
+dim_red = 3; #los puntos en la red no son reales, son solo los lugares alrededor de los cuales se van a armar los clusters
+puntos_por_cluster = 10;
 parametro_de_red = 1;
 ancho_del_cluster = 0.1; #lo que mide el cluster en x
 alto_del_cluster = 0.1; #lo que mide el cluster en y
@@ -165,13 +165,10 @@ cruzar <- function(cromosomas_padres, pc, k_max){
 #-----------------------------------------------------
 elegir_pareja <- function(fitness, pp){
 
-	#Toma pp soluciones aleatoreas y nos quedamos con las dos de mejor fitness	
-	cromosomas <- sample(1:length(fitness), pp, replace=FALSE);
-	pareja = c(0,0);
-	pareja[1] = cromosomas[which.max(fitness[cromosomas])];
-	fitness = fitness[-pareja[1]];
-	pareja[2] = cromosomas[which.max(fitness[cromosomas])];	
-	return (pareja);
+	#Toma pp soluciones aleatoreas y nos quedamos con las dos de mejor fitness
+	cromosomas<-sample(1:length(fitness), pp, replace=FALSE);
+	cromosomas_ordenados <- sort(fitness[cromosomas], decreasing = TRUE, index.return = TRUE);
+	return (cromosomas[cromosomas_ordenados$ix[1:2]]);
 	
 }
 

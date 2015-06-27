@@ -167,12 +167,9 @@ cruzar <- function(cromosomas_padres, pc, k_max){
 elegir_pareja <- function(fitness, pp){
 
 	#Toma pp soluciones aleatoreas y nos quedamos con las dos de mejor fitness	
-	cromosomas <- sample(1:length(fitness), pp, replace=FALSE);
-	pareja = c(0,0);
-	pareja[1] = cromosomas[which.max(fitness[cromosomas])];
-	fitness = fitness[-pareja[1]];
-	pareja[2] = cromosomas[which.max(fitness[cromosomas])];	
-	return (pareja);
+	cromosomas<-sample(1:length(fitness), pp, replace=FALSE);
+	cromosomas_ordenados <- sort(fitness[cromosomas], decreasing = TRUE, index.return = TRUE);
+	return (cromosomas[cromosomas_ordenados$ix[1:2]]);
 	
 }
 
@@ -289,8 +286,6 @@ datos_fitness = calcular_fitness(cromosoma_objetivo, promedio, k_max, puntos, di
 fitness_objetivo <- datos_fitness[[1]];
 
 #Arranca el reloj para medir el tiempo de ejecucion
-##:ess-bp-start::browser@nil:##
-browser(expr=is.null(.ESSBP.[["@2@"]]))##:ess-bp-end:##
 comienzo_de_reloj <- proc.time()
 
 #Comienzan las corridas
