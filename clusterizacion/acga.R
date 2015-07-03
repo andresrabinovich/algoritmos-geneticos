@@ -8,8 +8,8 @@
 #---------------------------
 #Configuraciones del dataset
 #---------------------------
-dim_red = 3; #los puntos en la red no son reales, son solo los lugares alrededor de los cuales se van a armar los clusters
-puntos_por_cluster = 10;
+dim_red = 4; #los puntos en la red no son reales, son solo los lugares alrededor de los cuales se van a armar los clusters
+puntos_por_cluster = 20;
 parametro_de_red = 1;
 ancho_del_cluster = 0.1; #lo que mide el cluster en x
 alto_del_cluster = 0.1; #lo que mide el cluster en y
@@ -17,7 +17,7 @@ alto_del_cluster = 0.1; #lo que mide el cluster en y
 #---------------------
 #Configuraciones de AG
 #---------------------
-poblacion = 40;
+poblacion = 10;
 pm = 0.1; #probabilidad de mutacion
 pc = 0.3; #probabilidad de single-point crossover
 pp = 3; #Cromosomas a seleccionar aleatoreamente en cada busqueda de padres
@@ -25,7 +25,7 @@ k_max = 20; #Maxima cantidad de clusters a buscar
 alfa = 0.1; #Amplitud de mutacion de valores de activacion
 epsilon = 0.3; #Amplitud de mutacion de centroides
 soluciones_de_elite = 4; #Las mejores soluciones pasan sin alteraciones a la proxima generacion
-generaciones = 2500;
+generaciones = 1000;
 corridas = 1;
 
 
@@ -56,7 +56,7 @@ calcular_fitness <- function(cromosoma, promedio, k_max, puntos){
 	
 	#Si solo hay un cluster, devuelve 0
 	if(clusters < 2) return (0);
-
+	distancia_intra_cluster = 0;
 	#Asigna primero cada punto a un cluster por proximidad
 	for(punto in 1:nrow(puntos)){
 		
@@ -65,19 +65,21 @@ calcular_fitness <- function(cromosoma, promedio, k_max, puntos){
 		for(i in 1:k_max){
 			#Si el valor de activacion es mayor a 0.5 (i.e. esta activado) busca los puntos que pertenecen a ese cluster		
 			if(cromosoma[i] >= 0.5){
+			  #cat(i, puntos[punto, 1], puntos[punto, 2], cromosoma[(k_max + (2*i - 1))], cromosoma[(k_max + (2*i))],(puntos[punto, 1] - cromosoma[(k_max + (2*i - 1))]),(puntos[punto, 2] - cromosoma[(k_max + (2*i))]),(k_max + (2*i)),(k_max + (2*i-1)),"|");
 				#Si la distancia a este centroide es la mas chica, se lo asigno al centroide
 				distancia_a_i = (puntos[punto, 1] - cromosoma[(k_max + (2*i - 1))])^2 + (puntos[punto, 2] - cromosoma[(k_max + (2*i))])^2
+				#print(distancia_a_i);
 				if(distancia_a_i < distancia_a_k) {
 					distancia_a_k = distancia_a_i;
 				}
 			}		
-			distancias[punto] = distancia_a_k; #La distancia cuadriatica del punto al cluster que pertenece
-		
+
 		}
+		distancia_intra_cluster = distancia_intra_cluster + distancia_a_k; #La distancia cuadriatica del punto al cluster que pertenece		
 	}
 	#Suma todas las distancias intra-clusters
-	distancia_intra_cluster = sum(distancias);
-		
+	#distancia_intra_cluster = sum(distancias);
+	#print(distancia_intra_cluster);
 	#Teniendo todo solo resta calcular el indice CH
 	ch = (((promedio - distancia_intra_cluster)/distancia_intra_cluster)*(nrow(puntos)-clusters)/(clusters-1));
 	return (ch);
@@ -260,6 +262,7 @@ cruzas = c(1: as.integer(poblacion/2));
 #de la distancia de los puntos al centroide. Calculamos esto una sola vez.
 centroide = t(c(mean(puntos[, 1]), mean(puntos[, 2])));
 promedio = sum((puntos[, 1]-centroide[1])^2+(puntos[, 2]-centroide[2])^2);
+print(promedio);
 
 #Registro de fitness y de maximo N, con sus errores
 registro_de_fitness = matrix(0, ncol=1, nrow=generaciones);
@@ -312,7 +315,7 @@ for(corrida in 1:corridas){
 		for(cromosoma in 1:poblacion){
 			fitness[cromosoma] = calcular_fitness(cromosomas[cromosoma, ], promedio, k_max, puntos);
 		}		
-
+    #print(fitness);
 		registro_de_fitness[generacion] = mean(fitness);
 		registro_de_error_fitness[generacion] = sd(fitness)
 
@@ -327,8 +330,8 @@ for(corrida in 1:corridas){
 				  "\n"))
 			cat(paste("               - N mean:sd:max",
 			          mean(nn),sd(nn),nn[ibestf],"\n\n"))
-			registro_de_n[generacion] = nn[ibestf];
-			registro_de_error_n[generacion] = sd(nn);	
+			#registro_de_n[generacion] = nn[ibestf];
+			#registro_de_error_n[generacion] = sd(nn);	
 		}
 
 		if(generacion == 10){
