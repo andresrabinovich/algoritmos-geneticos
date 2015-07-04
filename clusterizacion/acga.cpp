@@ -19,7 +19,7 @@ CONFIGURACIONES
 /*-------------------------
 Configuraciones del dataset
 -------------------------*/
-int centros_por_dimension = 4; //los centros son los lugares alrededor de los cuales se van a armar los clusters
+int centros_por_dimension = 3; //los centros son los lugares alrededor de los cuales se van a armar los clusters
 int puntos_por_cluster = 50;
 float parametro_de_red = 1;
 float ancho_del_cluster = 0.1; //lo que mide el cluster en x
@@ -42,6 +42,7 @@ int generaciones = 5000;
 Configuraciones del programa
 --------------------------*/
 bool multithreding = true;
+string dataset = "s1";
 
 /*--------------------------------
 Calcula algunas cantidades previas
@@ -187,15 +188,15 @@ class c_cromosoma {
 	vector<float> valores_de_activacion;
 	vector<c_punto> centroides;
 	float promedio_al_centro_del_dataset;
-	vector<c_punto>* puntos;
+	vector<c_punto*>* puntos;
 	double fitness;
 	c_generador_aleatorio* generador_aleatorio;
 	c_rectangulo* valores_limite;
 	vector<int> solucion_formato_cluster; //Representacion de la solucion en formato cluster(a que cluster va cada punto)
 		
 	c_cromosoma();
-	c_cromosoma(int k_max, c_rectangulo* valores_limite, float promedio_al_centro_del_dataset, vector<c_punto>* puntos, c_generador_aleatorio* generador_aleatorio);
-	c_cromosoma(int k_max, c_rectangulo* valores_limite, float promedio_al_centro_del_dataset, vector<c_punto>* puntos, c_generador_aleatorio* generador_aleatorio, const vector<float> &valores_de_activacion, const vector<c_punto> &centroides);
+	c_cromosoma(int k_max, c_rectangulo* valores_limite, float promedio_al_centro_del_dataset, vector<c_punto*> *puntos, c_generador_aleatorio* generador_aleatorio);
+	c_cromosoma(int k_max, c_rectangulo* valores_limite, float promedio_al_centro_del_dataset, vector<c_punto*> *puntos, c_generador_aleatorio* generador_aleatorio, const vector<float> &valores_de_activacion, const vector<c_punto> &centroides);
 	double calcular_fitness();
 	string to_string();
 	void mutar();
@@ -206,7 +207,7 @@ class c_cromosoma {
 c_cromosoma::c_cromosoma(){}
 
 //Este constructor genera las soluciones de forma random. Es el constructor para generar la tirada inicial de cromosomas
-c_cromosoma::c_cromosoma(int k_max, c_rectangulo* valores_limite, float promedio_al_centro_del_dataset, vector<c_punto>* puntos, c_generador_aleatorio* generador_aleatorio){
+c_cromosoma::c_cromosoma(int k_max, c_rectangulo* valores_limite, float promedio_al_centro_del_dataset, vector<c_punto*> *puntos, c_generador_aleatorio* generador_aleatorio){
 	
 	c_cromosoma::k_max = k_max;
 	c_cromosoma::promedio_al_centro_del_dataset = promedio_al_centro_del_dataset;
@@ -233,7 +234,7 @@ c_cromosoma::c_cromosoma(int k_max, c_rectangulo* valores_limite, float promedio
 }
 
 //Override del constructor por defecto para cargar valores_de_activacion y centroides
-c_cromosoma::c_cromosoma(int k_max, c_rectangulo* valores_limite, float promedio_al_centro_del_dataset, vector<c_punto>* puntos, c_generador_aleatorio* generador_aleatorio, const vector<float> &valores_de_activacion, const vector<c_punto> &centroides){
+c_cromosoma::c_cromosoma(int k_max, c_rectangulo* valores_limite, float promedio_al_centro_del_dataset, vector<c_punto*> *puntos, c_generador_aleatorio* generador_aleatorio, const vector<float> &valores_de_activacion, const vector<c_punto> &centroides){
 	
 	c_cromosoma::k_max = k_max;
 	c_cromosoma::promedio_al_centro_del_dataset = promedio_al_centro_del_dataset;
@@ -265,7 +266,7 @@ string c_cromosoma::to_cluster(){
 			if(valores_de_activacion[i] >= 0.5){
 				//cout << (*puntos)[punto].x << "|" << (*puntos)[punto].y << "|" << centroides[i].x << "|" << centroides[i].y << "|" << ((*puntos)[punto].x - centroides[i].x) << "|" << ((*puntos)[punto].y - centroides[i].y) << "\n";
 				//Si la distancia a este centroide es la mas chica, se lo asigno al centroide
-				double distancia_a_i = (pow(((*puntos)[punto].x - centroides[i].x), 2) + pow(((*puntos)[punto].y - centroides[i].y), 2));
+				double distancia_a_i = (pow(((*puntos)[punto]->x - centroides[i].x), 2) + pow(((*puntos)[punto]->y - centroides[i].y), 2));
 				if(distancia_a_i < distancia_a_k) {
 					distancia_a_k = distancia_a_i;
 					k = i;
@@ -389,7 +390,7 @@ double c_cromosoma::calcular_fitness(){
 			if(valores_de_activacion[i] >= 0.5){
 				//cout << (*puntos)[punto].x << "|" << (*puntos)[punto].y << "|" << centroides[i].x << "|" << centroides[i].y << "|" << ((*puntos)[punto].x - centroides[i].x) << "|" << ((*puntos)[punto].y - centroides[i].y) << "\n";
 				//Si la distancia a este centroide es la mas chica, se lo asigno al centroide
-				double distancia_a_i = (pow(((*puntos)[punto].x - centroides[i].x), 2) + pow(((*puntos)[punto].y - centroides[i].y), 2));
+				double distancia_a_i = (pow(((*puntos)[punto]->x - centroides[i].x), 2) + pow(((*puntos)[punto]->y - centroides[i].y), 2));
 				if(distancia_a_i < distancia_a_k) {
 					distancia_a_k = distancia_a_i;
 				}
@@ -410,7 +411,7 @@ COMIENZAN LAS FUNCIONES
 /*-------------------------------------
 Funcion para generar el dataset inicial
 -------------------------------------*/
-void generar_dataset(vector<c_punto> &centros, vector<c_punto> &puntos, c_rectangulo &valores_limite, c_generador_aleatorio &generador_aleatorio){
+void generar_dataset(vector<c_punto> &centros, vector<c_punto*> &puntos, c_rectangulo &valores_limite, c_generador_aleatorio &generador_aleatorio){
 
 	//genera la red equiespaciada
 	int centro = 0;	
@@ -426,35 +427,90 @@ void generar_dataset(vector<c_punto> &centros, vector<c_punto> &puntos, c_rectan
 	int punto = 0;
 	for(centro = 0; centro < cantidad_de_centros; centro++){
 		for(int punto_en_cluster = 0; punto_en_cluster < puntos_por_cluster; punto_en_cluster++){
-			puntos[punto].x = centros[centro].x + generador_aleatorio.runif(-ancho_del_cluster, ancho_del_cluster);
-			puntos[punto].y = centros[centro].y + generador_aleatorio.runif(-alto_del_cluster, alto_del_cluster);
+			puntos.push_back(new c_punto());
+			puntos[punto]->x = centros[centro].x + generador_aleatorio.runif(-ancho_del_cluster, ancho_del_cluster);
+			puntos[punto]->y = centros[centro].y + generador_aleatorio.runif(-alto_del_cluster, alto_del_cluster);
 			//Busca maximo y minimo en x
-			if(puntos[punto].x > valores_limite.superior_derecho.x){
-				valores_limite.superior_derecho.x = puntos[punto].x;
-			}else if (puntos[punto].x < valores_limite.inferior_izquierdo.x){
-				valores_limite.inferior_izquierdo.x = puntos[punto].x;			
+			if(puntos[punto]->x > valores_limite.superior_derecho.x){
+				valores_limite.superior_derecho.x = puntos[punto]->x;
+			}else if (puntos[punto]->x < valores_limite.inferior_izquierdo.x){
+				valores_limite.inferior_izquierdo.x = puntos[punto]->x;			
 			}
 			//Busca maximo y minimo en y
-			if(puntos[punto].y > valores_limite.superior_derecho.y){
-				valores_limite.superior_derecho.y = puntos[punto].y;
-			}else if (puntos[punto].y < valores_limite.inferior_izquierdo.y){
-				valores_limite.inferior_izquierdo.y = puntos[punto].y;			
+			if(puntos[punto]->y > valores_limite.superior_derecho.y){
+				valores_limite.superior_derecho.y = puntos[punto]->y;
+			}else if (puntos[punto]->y < valores_limite.inferior_izquierdo.y){
+				valores_limite.inferior_izquierdo.y = puntos[punto]->y;			
 			}
 			punto++;
 		}		
 	}	
 	return;
 }
+
+/*------------------------------------
+Funcion para cargar el dataset inicial
+------------------------------------*/
+void cargar_dataset(vector<c_punto> &centros, vector<c_punto*> &puntos, c_rectangulo &valores_limite, string dataset){
+
+	stringstream buffer;
+	buffer << "datasets/" << dataset << "-cb.txt";
+	ifstream archivo;
+	
+	//Lee el ground truth y carga la red
+	archivo.open(buffer.str().c_str());
+	
+	float x;
+	float y;
+
+	cantidad_de_centros = 0;
+	while (archivo >> x >> y)
+	{
+		centros.push_back(c_punto());
+		centros[cantidad_de_centros].x = x;
+		centros[cantidad_de_centros].y = y;
+		cantidad_de_centros++;
+	}	
+
+	archivo.close();
+	//Lee el dataset y carga los puntos. Además busca los limites
+	buffer.str("");
+	buffer << "datasets/" << dataset << ".txt";
+	
+	archivo.open(buffer.str().c_str());	
+	cantidad_de_puntos = 0;
+	while (archivo >> x >> y){
+		puntos.push_back(new c_punto());
+		puntos[cantidad_de_puntos]->x = x;
+		puntos[cantidad_de_puntos]->y = y;
+		//Busca maximo y minimo en x
+		if(puntos[cantidad_de_puntos]->x > valores_limite.superior_derecho.x){
+			valores_limite.superior_derecho.x = puntos[cantidad_de_puntos]->x;
+		}else if (puntos[cantidad_de_puntos]->x < valores_limite.inferior_izquierdo.x){
+			valores_limite.inferior_izquierdo.x = puntos[cantidad_de_puntos]->x;			
+		}
+		//Busca maximo y minimo en y
+		if(puntos[cantidad_de_puntos]->y > valores_limite.superior_derecho.y){
+			valores_limite.superior_derecho.y = puntos[cantidad_de_puntos]->y;
+		}else if (puntos[cantidad_de_puntos]->y < valores_limite.inferior_izquierdo.y){
+			valores_limite.inferior_izquierdo.y = puntos[cantidad_de_puntos]->y;			
+		}
+		cantidad_de_puntos++;
+	}	
+	archivo.close();	
+	return;
+}
+
 /*-------------------------------------------------------
 Funcion que encuentra el centroide para todos los puntos.
 -------------------------------------------------------*/
-c_punto encontrar_centroide(const vector<c_punto> &puntos){
+c_punto encontrar_centroide(const vector<c_punto*> &puntos){
 	
 	c_punto o_punto;
 	
 	for(int punto = 0; punto < puntos.size(); punto++){
-		o_punto.x += puntos[punto].x;
-		o_punto.y += puntos[punto].y;		
+		o_punto.x += puntos[punto]->x;
+		o_punto.y += puntos[punto]->y;		
 	}
 	o_punto.x = o_punto.x/puntos.size();
 	o_punto.y = o_punto.y/puntos.size();	
@@ -464,10 +520,10 @@ c_punto encontrar_centroide(const vector<c_punto> &puntos){
 /*----------------------------------------------------
 Funcion que encuentra el promedio de todos los puntos.
 ----------------------------------------------------*/
-float promedio_dataset(const vector<c_punto> &puntos, c_punto centroide){
+float promedio_dataset(const vector<c_punto*> &puntos, c_punto centroide){
 	float promedio = 0;
 	for(int punto = 0; punto < puntos.size(); punto++){	
-		promedio += ( pow((puntos[punto].x-centroide.x),2) + pow((puntos[punto].y-centroide.y),2) );
+		promedio += ( pow((puntos[punto]->x-centroide.x),2) + pow((puntos[punto]->y-centroide.y),2) );
 	}
 	return promedio;
 }
@@ -636,8 +692,8 @@ int main(){
 	c_generador_aleatorio generador_aleatorio;
 
 	//Definimos los vectores que contienen el dataset
-	vector<c_punto> centros(cantidad_de_centros);
-	vector<c_punto> puntos(cantidad_de_puntos);
+	vector<c_punto> centros;
+	vector<c_punto*> puntos;
 	c_rectangulo valores_limite(INFINITY, INFINITY, 0, 0);//Va a contener los valores limite que tomaron los puntos, en forma de un rectangulo (o sea, dos puntos, el angulo inferior izquierdo y el superior derecho)
 
 	//Va a contener la nueva generacion de cromosomas despues de cada cruza
@@ -647,7 +703,11 @@ int main(){
 	vector<c_cromosoma> cromosomas_de_elite(soluciones_de_elite);
 	
 	//Genera el dataset
-	generar_dataset(centros, puntos, valores_limite, generador_aleatorio);
+	if(dataset.size()){
+		cargar_dataset(centros, puntos, valores_limite, dataset);
+	}else{
+		generar_dataset(centros, puntos, valores_limite, generador_aleatorio);
+	}
 	
 	//Carga en el generador aleatorio las configuraciones limite para generar los distintos numeros
 	generador_aleatorio.cargar_configuraciones_de_cromosomas(pm, alfa, epsilon, k_max, &valores_limite); 
@@ -730,7 +790,8 @@ int main(){
   	int idx_mejor_solucion = mejor_solucion(cromosomas);
 	cout << "mejor solucion|mejor fitness|clusters: " << idx_mejor_solucion << "|" << cromosomas[idx_mejor_solucion].fitness << "|" << cromosomas[idx_mejor_solucion].clusters << "\n";
 	cout << "Promedio/Optima  (paso): " << promedio_fitness(cromosomas) << "/" << cromosoma_objetivo.fitness << " (" << generaciones << "/" << generaciones << ")\n";	
-	cout << cromosomas[idx_mejor_solucion].to_string() << "\n";
+	//cout << cromosomas[idx_mejor_solucion].to_string() << "\n";
+	cout << cromosoma_objetivo.to_string() << "\n";
 	std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 	cout << "Duracion real: " << duration/1000000.0L << "\n";
@@ -741,10 +802,21 @@ int main(){
  	archivo_soluciones.close();
  	
  	for(int p = 0; p < puntos.size(); p++){
-		archivo_puntos << puntos[p].x << "\t" << puntos[p].y << "\n";
+		archivo_puntos << puntos[p]->x << "\t" << puntos[p]->y << "\n";
 	}
  	archivo_puntos.close();
-	
+
+	//Liberamos la memoria
+	for(vector<c_punto*>::const_iterator it = puntos.begin(); it != puntos.end(); it++)
+	{
+	    delete (*it);
+	} 
+	puntos.clear();
+	centros.clear();
+	cromosomas.clear();
+	cromosomas_nuevos.clear();
+	cromosomas_de_elite.clear();
+
 	return 0;
 }
 
