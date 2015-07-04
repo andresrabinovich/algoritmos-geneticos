@@ -19,8 +19,8 @@ CONFIGURACIONES
 /*-------------------------
 Configuraciones del dataset
 -------------------------*/
-int centros_por_dimension = 3; //los centros son los lugares alrededor de los cuales se van a armar los clusters
-int puntos_por_cluster = 50;
+int centros_por_dimension = 4; //los centros son los lugares alrededor de los cuales se van a armar los clusters
+int puntos_por_cluster = 500;
 float parametro_de_red = 1;
 float ancho_del_cluster = 0.1; //lo que mide el cluster en x
 float alto_del_cluster = 0.1; //lo que mide el cluster en y
@@ -42,7 +42,7 @@ int generaciones = 5000;
 Configuraciones del programa
 --------------------------*/
 bool multithreding = true;
-string dataset = "s1";
+string dataset = "";
 
 /*--------------------------------
 Calcula algunas cantidades previas
@@ -417,6 +417,7 @@ void generar_dataset(vector<c_punto> &centros, vector<c_punto*> &puntos, c_recta
 	int centro = 0;	
 	for(int x = 1; x <= centros_por_dimension; x++){
 		for(int y = 1; y <= centros_por_dimension; y++){
+			centros.push_back(c_punto());
 			centros[centro].x = x;
 			centros[centro].y = y;
 			centro++;
@@ -701,7 +702,7 @@ int main(){
 	
 	//Vector de cromosomas de elite que van a pasar si o si a la proxima generacion
 	vector<c_cromosoma> cromosomas_de_elite(soluciones_de_elite);
-	
+
 	//Genera el dataset
 	if(dataset.size()){
 		cargar_dataset(centros, puntos, valores_limite, dataset);
