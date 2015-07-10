@@ -29,7 +29,6 @@ double alto_del_cluster = 0.1; //lo que mide el cluster en y
 /*-------------------
 Configuraciones de AG
 -------------------*/
-//int cantidad_de_especies = 3; //Una especie esta compuesta por toda una poblacion y las especies se van evolucionando en paralelo
 int poblacion = 40;
 double pm = 0.1; //probabilidad de mutacion
 double pc = 0.3; //probabilidad de single-point crossover
@@ -38,17 +37,13 @@ int k_max = 20; //Maxima cantidad de clusters a buscar
 double alfa = 0.1; //Amplitud de mutacion de valores de activacion
 double epsilon = 0.3; //Amplitud de mutacion de centroides
 int soluciones_de_elite = 4; //Las mejores soluciones pasan sin alteraciones a la proxima generacion
-int generaciones = 1000;
+int generaciones = 10000;
 
 /*--------------------------
 Configuraciones del programa
 --------------------------*/
-bool multithreding 				= true;
-string dataset 					= "s1"; //Dataset a clusterizar. Si es vacio genera una red al azar
-int cutoff					= 500; //Cuantas iteraciones tienen que pasar con el mismo max fitness para que corte
-int cantidad_de_clusters_inicial 		= 15; //Fuerza la cantidad de clusters habilitados que tiene que tener una solucion en la primer generacion
-int cada_cuantas_generaciones_mostrar_datos 	= 100;
-unsigned int cantidad_de_threads = std::thread::hardware_concurrency(); //std::thread::hardware_concurrency() autodetecta el maximo de procesadores
+bool multithreding = true;
+string dataset = "s1";
 
 /*--------------------------------
 Calcula algunas cantidades previas
@@ -221,12 +216,11 @@ c_cromosoma::c_cromosoma(int k_max, c_rectangulo* valores_limite, double promedi
 	c_cromosoma::generador_aleatorio = generador_aleatorio;
 
 	//Genera el cromosoma al azar de la corrida. Primero los valores de activacion.
-	//Fuerza que haya cantidad_de_clusters_inicial habilitados
-	for(int cluster_inicial = 0; cluster_inicial < cantidad_de_clusters_inicial; cluster_inicial++){
-		valores_de_activacion.push_back(0.5);
-	}
+	//Los dos primeros siempre estan activos para que haya al menos dos activos
+	valores_de_activacion.push_back(0.5);
+	valores_de_activacion.push_back(0.5);
 
-	for(int valor = cantidad_de_clusters_inicial; valor < k_max; valor++){
+	for(int valor = 2; valor < k_max; valor++){
 		valores_de_activacion.push_back(generador_aleatorio->runif());
 	}
 	
@@ -262,28 +256,26 @@ string c_cromosoma::to_cluster(){
 	//Incializa la tira que representa la solucion en el formato de clusters
 	solucion_formato_cluster.clear();
 
-	//Cuantos clusters hay habilitados
-	vector<int> clusters_habilitados;
-	for(int k = 0; k < k_max; k++){
-		//Si el valor de activacion es mayor a 0.5 (i.e. esta activado) busca los puntos que pertenecen a ese cluster		
-		if(valores_de_activacion[k] >= 0.5) clusters_habilitados.push_back(k);
-	}
-
 	//Asigna cada punto a un cluster por proximidad
 	for(int punto = 0; punto < puntos->size(); punto++){
 		//Inicializa la distancia al cluster al que pertenece (infinity = no pertenece a ninguno)		
 		double distancia_a_k = INFINITY;
 		int k;
-		for(int i = 0; i < clusters_habilitados.size(); i++){
-			//Si la distancia a este centroide es la mas chica, se lo asigno al centroide
-			double distancia_a_i = (pow(((*puntos)[punto]->x - centroides[clusters_habilitados[i]].x), 2) + pow(((*puntos)[punto]->y - centroides[clusters_habilitados[i]].y), 2));
-			if(distancia_a_i < distancia_a_k) {
-				distancia_a_k = distancia_a_i;
-				k = i;
-			}
+		for(int i = 0; i < k_max; i++){
+			//Si el valor de activacion es mayor a 0.5 (i.e. esta activado) busca los puntos que pertenecen a ese cluster		
+			if(valores_de_activacion[i] >= 0.5){
+				//cout << (*puntos)[punto].x << "|" << (*puntos)[punto].y << "|" << centroides[i].x << "|" << centroides[i].y << "|" << ((*puntos)[punto].x - centroides[i].x) << "|" << ((*puntos)[punto].y - centroides[i].y) << "\n";
+				//Si la distancia a este centroide es la mas chica, se lo asigno al centroide
+				double distancia_a_i = (pow(((*puntos)[punto]->x - centroides[i].x), 2) + pow(((*puntos)[punto]->y - centroides[i].y), 2));
+				if(distancia_a_i < distancia_a_k) {
+					distancia_a_k = distancia_a_i;
+					k = i;
+				}
+			}		
 		}
 		solucion_formato_cluster.push_back(k);
 	}
+	
 	/*
 	//Ordena la lista para que no queden agujeros entre los clusters (el 111133335555 tiene que ser 111122223333)
 	int k_actual = 1;
@@ -690,21 +682,13 @@ void mutar(vector<c_cromosoma> &cromosomas, int desde, int hasta){
 COMIENZA EL PROGRAMA
 *******************/
 int main(){
-	
+
 	//Archivo de salida
-	ofstream archivo_mejores_soluciones;
-	//ofstream archivo_mejores_soluciones_formato_cluster;
-	ofstream archivo_puntos;
 	ofstream archivo_soluciones;
-	
+	ofstream archivo_puntos;
 	archivo_soluciones.open ("soluciones.txt");
 	archivo_puntos.open ("puntos.txt");
-	archivo_mejores_soluciones.open ("mejores_soluciones.txt");
-	//archivo_mejores_soluciones_formato_cluster.open ("mejores_soluciones_formato_cluster.txt");
-	
-	//Buffer donde vamos a guardar las soluciones en cada paso para no grabarlas a disco que tarda mucho
-	stringstream buffer_de_soluciones;
-	
+
 	//Habilita el generador de numeros aleatorios para elegir los valores dentro de los cuales se van a mover los centroides
 	c_generador_aleatorio generador_aleatorio;
 
@@ -754,17 +738,7 @@ int main(){
 
 	//Comienza la evolucion
 	std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-	int iteraciones_con_max_fitness_igual = 0;
-	double max_fitness = 0;
-	int generacion;
-	
-	//Calcula cuantos threads va a usar (usa la maxima cantidad de procesadores disponibles)
-	if(multithreding && cantidad_de_threads == 0){
-		cantidad_de_threads = sysconf(_SC_NPROCESSORS_ONLN);
-	}
-	std::thread threads[cantidad_de_threads];
-
-	for(generacion = 0; generacion < generaciones; generacion++){
+	for(int generacion = 0; generacion < generaciones; generacion++){
 	
 		//Se queda con los mejores soluciones_de_elite
 		reservar_soluciones_de_elite(cromosomas, cromosomas_de_elite);
@@ -773,6 +747,10 @@ int main(){
 		//Elige poblacion/2 parejas. Vacia previamente el vector de cromosomas nuevos
 		cromosomas_nuevos.clear();
 
+		for(int i = 0; i < poblacion; i++){
+			//cout << cromosomas[i].to_string() << "\n";
+		}		
+		
 		//Genera la poblacion nueva
 		for(int cruza = 0; cruza < (poblacion/2); cruza++){
 			cruzar(cromosomas, cromosomas_nuevos, generador_aleatorio);
@@ -783,85 +761,67 @@ int main(){
 		if(multithreding){
 			//Muta la poblacion nueva usando dos threads para paralelismo. Los argumentos que 
 			//queremos que se modifiquen tienen que ir entre std::ref()
-			for(int n_thread = 0; n_thread < cantidad_de_threads; n_thread++){
-				
-				//Crea el thread
-				threads[n_thread] = std::thread(mutar, ref(cromosomas_nuevos), (cromosomas_nuevos.size()/cantidad_de_threads)*n_thread, (cromosomas_nuevos.size()/cantidad_de_threads)*(n_thread+1));
-			}
-			for(int n_thread = 0; n_thread < cantidad_de_threads; n_thread++){
-				//Pausa hasta que terminan los threads
-				threads[n_thread].join();
-			}
-			/*
 			std::thread primera(mutar, ref(cromosomas_nuevos), 0, cromosomas_nuevos.size()/2);
 			std::thread segunda(mutar, ref(cromosomas_nuevos), cromosomas_nuevos.size()/2, cromosomas_nuevos.size());  
 		
 			//Pausa hasta que terminan los dos threads
 			primera.join();
 			segunda.join();
-			*/
 		}else{
-			mutar(cromosomas_nuevos, 0, cromosomas_nuevos.size());
+			for(int cromosoma = 0; cromosoma < poblacion; cromosoma++){
+				cromosomas_nuevos[cromosoma].mutar();	
+			}
 		}	
+		for(int i = 0; i < poblacion; i++){
+			//cout << cromosomas[i].mostrar_cambios() << "\n";
+		}		
+		for(int i = 0; i < poblacion; i++){
+			//cout << cromosomas_nuevos[i].to_string() << "\n";
+		}		
+						
+		for(int i = 0; i < poblacion; i++){
+			//cout << cromosomas_nuevos[i].mostrar_cambios() << "\n";
+		}				
 			
+			//cout << "_-------------------------------------______\n";						
 		//Actualiza la poblacion con la poblacion nueva
 		cromosomas = cromosomas_nuevos;
 
 		//Pisa soluciones al azar con los cromosomas de elite	
 		aplicar_soluciones_de_elite(cromosomas, cromosomas_de_elite, generador_aleatorio);
 	  	
-		//Guarda todas las soluciones de la generacion
-		for(int cromosoma = 0; cromosoma < cromosomas.size(); cromosoma++){
-			buffer_de_soluciones << generacion << "\t" <<  cromosomas[cromosoma].to_string() << "\n";
-		}
-		
 	  	//Guarda en archivo el promedio del fitness
-	  	if(generacion % cada_cuantas_generaciones_mostrar_datos == 0){
-		  	if(generacion == cada_cuantas_generaciones_mostrar_datos){
+	  	if(generacion % 100 == 0){
+		  	if(generacion == 100){
 		  		std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 		  		auto duration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
-				double duracion_corrida = (duration/(cada_cuantas_generaciones_mostrar_datos*1000000.0L))*generaciones;
+				double duracion_corrida = (duration/(100*1000000.0L))*generaciones;
 				cout << "Duracion estimada de corrida: " << duracion_corrida << "\n";
 		  	}
 		  	int idx_mejor_solucion = mejor_solucion(cromosomas);
 			cout << "mejor solucion|mejor fitness|clusters: " << idx_mejor_solucion << "|" << cromosomas[idx_mejor_solucion].fitness << "|" << cromosomas[idx_mejor_solucion].clusters << "\n";
 			cout << "Promedio/Optima (paso): " << promedio_fitness(cromosomas) << "/" << cromosoma_objetivo.fitness << " (" << generacion << "/" << generaciones << ")\n";
-			archivo_mejores_soluciones << cromosomas[idx_mejor_solucion].to_string() << "\n";
-			//archivo_mejores_soluciones_formato_cluster << cromosomas[idx_mejor_solucion].to_cluster() << "\n";
-			if(cromosomas[idx_mejor_solucion].fitness == max_fitness){
-				iteraciones_con_max_fitness_igual = iteraciones_con_max_fitness_igual + cada_cuantas_generaciones_mostrar_datos;
-			}else{
-				max_fitness = cromosomas[idx_mejor_solucion].fitness;
-				iteraciones_con_max_fitness_igual = 1;
-			}
-			if(iteraciones_con_max_fitness_igual >= cutoff){
-				cout << "Cutoff alcanzado...finalizando...\n";
-				break;
-			}	
+			archivo_soluciones << cromosomas[idx_mejor_solucion].to_string() << "\n";
 		}
 
 	}
 
   	int idx_mejor_solucion = mejor_solucion(cromosomas);
 	cout << "mejor solucion|mejor fitness|clusters: " << idx_mejor_solucion << "|" << cromosomas[idx_mejor_solucion].fitness << "|" << cromosomas[idx_mejor_solucion].clusters << "\n";
-	cout << "Promedio/Optima  (paso): " << promedio_fitness(cromosomas) << "/" << cromosoma_objetivo.fitness << " (" << generacion << "/" << generaciones << ")\n";	
-	//cout << cromosomas[idx_mejor_solucion].to_string() << "\n";
-
+	cout << "Promedio/Optima  (paso): " << promedio_fitness(cromosomas) << "/" << cromosoma_objetivo.fitness << " (" << generaciones << "/" << generaciones << ")\n";	
+	cout << cromosomas[idx_mejor_solucion].to_string() << "\n";
+	//cout << cromosoma_objetivo.to_string() << "\n";
 	std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
-	cout << "Duracion real: " << duration/(1000000.0L) << "\n";
+	cout << "Duracion real: " << duration/1000000.0L << "\n";
 
- 	archivo_mejores_soluciones.close();
- 	//archivo_mejores_soluciones_formato_cluster.close();
-	
+ 	archivo_soluciones.close();
+ 	
  	for(int p = 0; p < puntos.size(); p++){
 		archivo_puntos << puntos[p]->x << "\t" << puntos[p]->y << "\n";
 	}
  	archivo_puntos.close();
 
-	archivo_soluciones << buffer_de_soluciones;
-	archivo_soluciones.close();
-	
 	//Liberamos la memoria
 	for(vector<c_punto*>::const_iterator it = puntos.begin(); it != puntos.end(); it++)
 	{

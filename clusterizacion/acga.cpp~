@@ -38,7 +38,7 @@ int k_max = 20; //Maxima cantidad de clusters a buscar
 double alfa = 0.1; //Amplitud de mutacion de valores de activacion
 double epsilon = 0.3; //Amplitud de mutacion de centroides
 int soluciones_de_elite = 4; //Las mejores soluciones pasan sin alteraciones a la proxima generacion
-int generaciones = 1000;
+int generaciones = 5000;
 
 /*--------------------------
 Configuraciones del programa
