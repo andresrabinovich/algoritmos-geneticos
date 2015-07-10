@@ -37,13 +37,13 @@ int k_max = 20; //Maxima cantidad de clusters a buscar
 double alfa = 0.1; //Amplitud de mutacion de valores de activacion
 double epsilon = 0.3; //Amplitud de mutacion de centroides
 int soluciones_de_elite = 4; //Las mejores soluciones pasan sin alteraciones a la proxima generacion
-int generaciones = 5000;
+int generaciones = 10000;
 
 /*--------------------------
 Configuraciones del programa
 --------------------------*/
 bool multithreding = true;
-string dataset = "";
+string dataset = "s1";
 
 /*--------------------------------
 Calcula algunas cantidades previas
@@ -184,16 +184,10 @@ class c_cromosoma {
 	int k_max;
 	int clusters;
 	vector<double> valores_de_activacion;
-	vector<int> cambios_valores_de_activacion;
 	vector<c_punto> centroides;
-	vector<int> cambios_centroides;
 	double promedio_al_centro_del_dataset;
 	vector<c_punto*>* puntos;
-	static int cuantas;
-	int quien_soy;
 	double fitness;
-	vector<int> puntos_en_clusters;
-	vector<double> distancias;
 	c_generador_aleatorio* generador_aleatorio;
 	c_rectangulo* valores_limite;
 	vector<int> solucion_formato_cluster; //Representacion de la solucion en formato cluster(a que cluster va cada punto)
@@ -206,10 +200,7 @@ class c_cromosoma {
 	void mutar();
 	string to_string();
 	string to_cluster();
-	string mostrar_cambios();
 };
-
-int c_cromosoma::cuantas = 0;
 
 //El constructor por defecto viene vacio. Sirve para definir cromosomas temporales
 c_cromosoma::c_cromosoma(){}
@@ -224,14 +215,6 @@ c_cromosoma::c_cromosoma(int k_max, c_rectangulo* valores_limite, double promedi
 	c_cromosoma::valores_limite = valores_limite;
 	c_cromosoma::generador_aleatorio = generador_aleatorio;
 
-	cambios_valores_de_activacion 	= vector<int>(k_max);
-	cambios_centroides		= vector<int>(k_max);	
-	puntos_en_clusters		= vector<int>(puntos->size());
-	distancias			= vector<double>(puntos->size());
-
-	primera_corrida			= true;
-	
-	quien_soy = ++cuantas;
 	//Genera el cromosoma al azar de la corrida. Primero los valores de activacion.
 	//Los dos primeros siempre estan activos para que haya al menos dos activos
 	valores_de_activacion.push_back(0.5);
@@ -258,13 +241,6 @@ c_cromosoma::c_cromosoma(int k_max, c_rectangulo* valores_limite, double promedi
 	c_cromosoma::puntos = puntos;
 	c_cromosoma::valores_limite = valores_limite;
 
-	cambios_valores_de_activacion 	= vector<int>(k_max);
-	cambios_centroides		= vector<int>(k_max);	
-	puntos_en_clusters		= vector<int>(puntos->size());
-	distancias			= vector<double>(puntos->size());
-
-	primera_corrida			= true;
-	quien_soy = ++cuantas;
 	//Genera el cromosoma al azar de la corrida. Primero los valores de activacion.
 	c_cromosoma::valores_de_activacion = valores_de_activacion;
 	//Ahora genera los centroides. Los genera dentro de los rangos maximos y minimos de los valores limite
@@ -339,19 +315,6 @@ string c_cromosoma::to_string(){
 	return buffer.str();
 }
 
-string c_cromosoma::mostrar_cambios(){
-	stringstream buffer;
-	for(int k = 0; k < k_max; k++){
-		buffer << cambios_valores_de_activacion[k] << ",";
-	}
-	for(int k = 0; k < (k_max-1); k++){
-		buffer << cambios_centroides[k] << ",";
-	}
-		buffer << cambios_centroides[(k_max-1)];
-
-	return buffer.str();
-}
-
 /*-----------------
 Funcion de mutacion
 -----------------*/
@@ -373,16 +336,8 @@ void c_cromosoma::mutar(){
 				valores_de_activacion[k] = nuevo_va;
 			}
 			
-			//Guarda el cambio, 1 para activacion, 2 para desactivacion
-			if(valor_viejo >= 0.5 && valores_de_activacion[k] < 0.5){ //Se desactivo
-				cambios_valores_de_activacion[k] = 2;
-			}else if(valor_viejo < 0.5 && valores_de_activacion[k] >= 0.5){ //Se activo
-				cambios_valores_de_activacion[k] = 1;
-			}
-			//cout << valor_viejo << "," << valores_de_activacion[k] << ", " << cambios_valores_de_activacion[k] << "\n";
-		}else{
-			cambios_valores_de_activacion[k] = 0;
 		}
+		
 		//Muta centroide kesimo
 		if(generador_aleatorio->runif() < pm){ //Muta con probabilidad pm
 	
@@ -401,9 +356,6 @@ void c_cromosoma::mutar(){
 			}
 			centroides[k].x = nuevo_x;
 			centroides[k].y = nuevo_y;			
-
-			//Guarda el cambio
-			cambios_centroides[k] = 1;
 		}		
 		
 	}
@@ -428,103 +380,29 @@ double c_cromosoma::calcular_fitness(){
 	}
 
 	clusters = clusters_habilitados.size();
+	//si solo hay un cluster, devuelve 0.
+	if(clusters < 2) return 0;
 
 	//Va a sumar todas las distancias intra-clusters
 	double distancia_intra_cluster = 0;
-
-	//La primer corrida no se fija si hubo cambios, no tendria sentido
-	if(primera_corrida){
-		//Asigna primero cada punto a un cluster por proximidad
-		for(int punto = 0; punto < puntos->size(); punto++){
-			//Inicializa la distancia al cluster al que pertenece (infinity = no pertenece a ninguno)		
-			distancias[punto] 		= INFINITY;
-			puntos_en_clusters[punto] 	= 0;
-			for(int i=0; i < clusters_habilitados.size(); i++){
-				//Si la distancia a este centroide es la mas chica, se lo asigno al centroide
-				double distancia_a_i = (pow(((*puntos)[punto]->x - centroides[clusters_habilitados[i]].x), 2) + pow(((*puntos)[punto]->y - centroides[clusters_habilitados[i]].y), 2));
-				if(distancia_a_i < distancias[punto]) {
-					distancias[punto] = distancia_a_i;
-					puntos_en_clusters[punto] = clusters_habilitados[i];
-				}
-			}
-			distancia_intra_cluster	+= distancias[punto];//La distancia cuadriatica del punto al cluster que pertenece	
-		}
-		primera_corrida = false;
-	}else{	
-		//Revisamos primero los cambios en los valores de activacion
-		vector<int> centroides_a_recalcular;
-		vector<int> puntos_a_recalcular;
-		for(int k = 0; k < cambios_valores_de_activacion.size(); k++){
-			if(cambios_valores_de_activacion[k] == 2){ //Se desactivo el cluster
-				//Recalculamos solo los puntos desactivados en ese cluster
-				for(int punto = 0; punto < puntos->size(); punto++){
-					if(puntos_en_clusters[punto] == k){ //Este punto estaba en el cluster apagado
-						puntos_a_recalcular.push_back(punto);
-					}
-				}
-			}else if(cambios_valores_de_activacion[k] == 1){ //Se activo el centroide, lo agregamos a la lista de los centroides modificados
-				centroides_a_recalcular.push_back(k);
-			}
-		}
 		
-		//Ahora revisamos los cambios en los clusters
-		for(int k = 0; k < centroides.size(); k++){
-			if(cambios_centroides[k] == 1){ //Se modifico el centroide, lo agregamos a los centroides a recalcular, si no estaba
-				if(valores_de_activacion[k] >= 0.5){
-					if(!(find(centroides_a_recalcular.begin(), centroides_a_recalcular.end(), k) != centroides_a_recalcular.end())){
-						centroides_a_recalcular.push_back(k);
-					}
-					//Recalculamos solo los puntos desactivados en ese cluster
-					for(int punto = 0; punto < puntos->size(); punto++){
-						if(puntos_en_clusters[punto] == k){ //Este punto estaba en el cluster modificado
-							//if(!(find(puntos_a_recalcular.begin(), puntos_a_recalcular.end(), punto) != puntos_a_recalcular.end())){
-								puntos_a_recalcular.push_back(punto);
-							//}
-						}
-					}
-				}
+	//Asigna primero cada punto a un cluster por proximidad
+	for(int punto = 0; punto < puntos->size(); punto++){
+		//Inicializa la distancia al cluster al que pertenece (infinity = no pertenece a ninguno)		
+		double distancia_a_k = INFINITY;
+		for(int i=0; i < clusters_habilitados.size(); i++){
+			//Si la distancia a este centroide es la mas chica, se lo asigno al centroide
+			double distancia_a_i = (pow(((*puntos)[punto]->x - centroides[clusters_habilitados[i]].x), 2) + pow(((*puntos)[punto]->y - centroides[clusters_habilitados[i]].y), 2));
+			if(distancia_a_i < distancia_a_k) {
+				distancia_a_k = distancia_a_i;
 			}
 		}
+		distancia_intra_cluster	+= distancia_a_k;//La distancia cuadriatica del punto al cluster que pertenece	
+	}
 
-		//Ahora revisamos todos los puntos. Separamos entre los que hay que recalcular en todos los centroides y 
-		//los que solamente sobre centroides activos
-		for(int punto = 0; punto < puntos->size(); punto++){
-			
-			if(find(puntos_a_recalcular.begin(), puntos_a_recalcular.end(), punto) != puntos_a_recalcular.end()){
-				//Recalculamos la distancia al cluster mas cercano
-				distancias[punto] = INFINITY;
-				for(int i=0; i < clusters_habilitados.size(); i++){
-					//Si la distancia a este centroide es la mas chica, se lo asigno al centroide
-					double distancia_a_i = (pow(((*puntos)[punto]->x - centroides[clusters_habilitados[i]].x), 2) + pow(((*puntos)[punto]->y - centroides[clusters_habilitados[i]].y), 2));
-					if(distancia_a_i < distancias[punto]) {
-						distancias[punto] = distancia_a_i;
-						puntos_en_clusters[punto] = clusters_habilitados[i];
-					}
-				}
-			}else{			
-				for(int i=0; i < centroides_a_recalcular.size(); i++){
-					//Si la distancia a este centroide es la mas chica, se lo asigno al centroide
-					double distancia_a_i = (pow(((*puntos)[punto]->x - centroides[centroides_a_recalcular[i]].x), 2) + pow(((*puntos)[punto]->y - centroides[centroides_a_recalcular[i]].y), 2));
-					if(distancia_a_i < distancias[punto]) {
-						distancias[punto] 	  = distancia_a_i;
-						puntos_en_clusters[punto] = centroides_a_recalcular[i];
-					}
-				}
-			}
-			distancia_intra_cluster	+= distancias[punto];//La distancia cuadriatica del punto al cluster que pertenece	
-		}
-		
-	}
-	
-	//si solo hay un cluster, devuelve 0. Igual tiene que estar al final para que asigne correctamente 
-	//los puntos al unico cluster y calcule las istancias al mismo
-	if(clusters < 2) {
-		return 0;
-	}else{
-		//Teniendo todo solo resta calcular el indice CH
-		fitness = ((promedio_al_centro_del_dataset - distancia_intra_cluster)/distancia_intra_cluster)*((puntos->size()-clusters)/(clusters-1));
-		return fitness;
-	}
+	//Teniendo todo solo resta calcular el indice CH
+	fitness = ((promedio_al_centro_del_dataset - distancia_intra_cluster)/distancia_intra_cluster)*((puntos->size()-clusters)/(clusters-1));
+	return fitness;
 }
 
 /**********************
@@ -700,18 +578,12 @@ void cruzar(const vector<c_cromosoma> &cromosomas_padres, vector<c_cromosoma> &c
 	//Genera los hijos como copias de los padres que pueden ser crossoveriados despues
 	cromosomas_hijos.push_back(cromosomas_padres[pareja[0]]);
 	cromosomas_hijos.push_back(cromosomas_padres[pareja[1]]); 	 
-	//cout << cromosomas_hijos.size() << "\n" << cromosomas_padres[pareja[0]].to_string() << "\n" << cromosomas_padres[pareja[1]].to_string() << "\n" << cromosomas_hijos[cromosomas_hijos.size()-2].to_string() << "\n" << cromosomas_hijos[cromosomas_hijos.size()-1].to_string() << "\n";
 
 	//Hace crossover entre dos cromosomas con probabilidad pc para cada elemento
 	for(int k = 0; k < k_max; k++){
 		if(generador_aleatorio.runif() < pc){ //intercambiamos los locus con probabilidad pc
 			cromosomas_hijos[cromosomas_hijos.size()-2].centroides[k] = cromosomas_padres[pareja[1]].centroides[k];
 			cromosomas_hijos[cromosomas_hijos.size()-1].centroides[k] = cromosomas_padres[pareja[0]].centroides[k];
-			cromosomas_hijos[cromosomas_hijos.size()-2].cambios_centroides[k] = 1;
-			cromosomas_hijos[cromosomas_hijos.size()-1].cambios_centroides[k] = 1;			
-		}else{
-			cromosomas_hijos[cromosomas_hijos.size()-2].cambios_centroides[k] = 0;
-			cromosomas_hijos[cromosomas_hijos.size()-1].cambios_centroides[k] = 0;			
 		}		
 		
 	}
