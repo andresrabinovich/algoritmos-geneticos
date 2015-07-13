@@ -747,6 +747,10 @@ int main(){
 		//Elige poblacion/2 parejas. Vacia previamente el vector de cromosomas nuevos
 		cromosomas_nuevos.clear();
 
+		for(int i = 0; i < poblacion; i++){
+			//cout << cromosomas[i].to_string() << "\n";
+		}		
+		
 		//Genera la poblacion nueva
 		for(int cruza = 0; cruza < (poblacion/2); cruza++){
 			cruzar(cromosomas, cromosomas_nuevos, generador_aleatorio);
@@ -768,7 +772,18 @@ int main(){
 				cromosomas_nuevos[cromosoma].mutar();	
 			}
 		}	
-					
+		for(int i = 0; i < poblacion; i++){
+			//cout << cromosomas[i].mostrar_cambios() << "\n";
+		}		
+		for(int i = 0; i < poblacion; i++){
+			//cout << cromosomas_nuevos[i].to_string() << "\n";
+		}		
+						
+		for(int i = 0; i < poblacion; i++){
+			//cout << cromosomas_nuevos[i].mostrar_cambios() << "\n";
+		}				
+			
+			//cout << "_-------------------------------------______\n";						
 		//Actualiza la poblacion con la poblacion nueva
 		cromosomas = cromosomas_nuevos;
 
