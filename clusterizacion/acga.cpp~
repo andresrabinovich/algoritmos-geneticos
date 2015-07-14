@@ -38,8 +38,9 @@ int k_max = 20; //Maxima cantidad de clusters a buscar
 double alfa = 0.1; //Amplitud de mutacion de valores de activacion
 double epsilon = 0.3; //Amplitud de mutacion de centroides
 int soluciones_de_elite = 4; //Las mejores soluciones pasan sin alteraciones a la proxima generacion
-int generaciones = 500;
-int cada_cuantas_generaciones_intercambiar_especies = 200;
+int generaciones = 3000;
+int cada_cuantas_generaciones_intercambiar_especies = 500;
+int soluciones_de_elite_a_intercambiar = 4;
 
 /*--------------------------
 Configuraciones del programa
@@ -620,7 +621,7 @@ bool comparator ( const mypair& l, const mypair& r){ return l.first > r.first; }
 /*-----------------------------
 Devuelve las mejores soluciones
 -----------------------------*/
-void reservar_soluciones_de_elite(const vector<c_cromosoma> &cromosomas, vector<c_cromosoma> &cromosomas_de_elite){
+void reservar_soluciones_de_elite(const vector<c_cromosoma> &cromosomas, vector<c_cromosoma> &cromosomas_de_elite, int soluciones_de_elite){
 
 	//Armamos un vector de pares, fitness, indice, ordenamos por fitnes y devolvemos el 
 	//indice de las soluciones_de_elite mejores
@@ -632,7 +633,7 @@ void reservar_soluciones_de_elite(const vector<c_cromosoma> &cromosomas, vector<
 	
 	sort(fitness.begin(), fitness.end(), comparator);
 	cromosomas_de_elite.clear();
-	for(int cromosoma = 0; cromosoma < cromosomas_de_elite.size(); cromosoma++){
+	for(int cromosoma = 0; cromosoma < soluciones_de_elite; cromosoma++){
 		cromosomas_de_elite.push_back(cromosomas[fitness[cromosoma].second]);	
 	}
 	
@@ -780,7 +781,7 @@ int main(){
 		for(int especie = 0; especie < especies; especie++){
 			
 			//Se queda con los mejores soluciones_de_elite
-			reservar_soluciones_de_elite(cromosomas[especie], cromosomas_de_elite[especie]);
+			reservar_soluciones_de_elite(cromosomas[especie], cromosomas_de_elite[especie], soluciones_de_elite);
 			
 			//Cruza los cromosomas de acuerdo a su fitness. Cuanto mas fitness mas probabilidad de cruza. 
 			//Elige poblacion/2 parejas. Vacia previamente el vector de cromosomas nuevos
@@ -852,7 +853,26 @@ int main(){
 					break;
 				}	
 			}
-
+		}
+		
+		//Mezcla las mejores soluciones de cada especie
+		if(generacion % cada_cuantas_generaciones_intercambiar_especies == 0){
+			vector<vector<c_cromosoma>> intercambiar_cromosomas(especies);
+			
+			//Reserva las soluciones a intercambiar
+			for(int especie = 0; especie < especies; especie++){
+				reservar_soluciones_de_elite(cromosomas[especie], intercambiar_cromosomas[especie], soluciones_de_elite_a_intercambiar);
+			}
+			
+			//Intercambia las soluciones
+			for(int cromosoma = 0; cromosoma < soluciones_de_elite_a_intercambiar; cromosoma++){
+				for(int especie = 0; especie < (especies-1); especie++){
+					cromosomas[especie][cromosoma] = intercambiar_cromosomas[especie+1][cromosoma];
+				}
+				cromosomas[(especies-1)][cromosoma] = intercambiar_cromosomas[0][cromosoma];
+			}
+			cout << "Intercambio de especies (nichos)\n";
+			
 		}
 	}
 	
