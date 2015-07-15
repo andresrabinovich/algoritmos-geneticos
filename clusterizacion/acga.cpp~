@@ -10,6 +10,7 @@
 #include <chrono>
 #include <thread>
 #include <stdlib.h>
+#include <unistd.h>
 
 using namespace std;
 
@@ -20,8 +21,8 @@ CONFIGURACIONES
 /*-------------------------
 Configuraciones del dataset
 -------------------------*/
-int centros_por_dimension = 4; //los centros son los lugares alrededor de los cuales se van a armar los clusters
-int puntos_por_cluster = 50;
+int centros_por_dimension = 2; //los centros son los lugares alrededor de los cuales se van a armar los clusters
+int puntos_por_cluster = 10;
 double parametro_de_red = 1;
 double ancho_del_cluster = 0.1; //lo que mide el cluster en x
 double alto_del_cluster = 0.1; //lo que mide el cluster en y
@@ -29,7 +30,7 @@ double alto_del_cluster = 0.1; //lo que mide el cluster en y
 /*-------------------
 Configuraciones de AG
 -------------------*/
-int especies = 3; //Una especie esta compuesta por toda una poblacion y las especies se van evolucionando en paralelo
+int especies = 1; //Una especie esta compuesta por toda una poblacion y las especies se van evolucionando en paralelo
 int poblacion = 40;
 double pm = 0.1; //probabilidad de mutacion
 double pc = 0.3; //probabilidad de single-point crossover
@@ -37,18 +38,19 @@ int pp = 3; //Cromosomas a seleccionar aleatoreamente en cada busqueda de padres
 int k_max = 20; //Maxima cantidad de clusters a buscar
 double alfa = 0.1; //Amplitud de mutacion de valores de activacion
 double epsilon = 0.3; //Amplitud de mutacion de centroides
-int soluciones_de_elite = 4; //Las mejores soluciones pasan sin alteraciones a la proxima generacion
+int soluciones_de_elite = 1; //Las mejores soluciones pasan sin alteraciones a la proxima generacion
 int generaciones = 3000;
 int cada_cuantas_generaciones_intercambiar_especies = 500;
 int soluciones_de_elite_a_intercambiar = 4;
+int cada_cuantas_generaciones_splitear_clusters = 250;
 
 /*--------------------------
 Configuraciones del programa
 --------------------------*/
 bool multithreding 				= true;
-string dataset 					= "s1"; //Dataset a clusterizar. Si es vacio genera una red al azar
+string dataset 					= "s3"; //Dataset a clusterizar. Si es vacio genera una red al azar
 int cutoff					= 500; //Cuantas iteraciones tienen que pasar con el mismo max fitness para que corte
-int cantidad_de_clusters_inicial 		= 15; //Fuerza la cantidad de clusters habilitados que tiene que tener una solucion en la primer generacion
+int cantidad_de_clusters_inicial 		= 3; //Fuerza la cantidad de clusters habilitados que tiene que tener una solucion en la primer generacion como minimo
 int cada_cuantas_generaciones_mostrar_datos 	= 100;
 unsigned int cantidad_de_threads = std::thread::hardware_concurrency(); //std::thread::hardware_concurrency() autodetecta el maximo de procesadores
 
@@ -194,6 +196,7 @@ class c_cromosoma {
 	vector<c_punto> centroides;
 	double promedio_al_centro_del_dataset;
 	vector<c_punto*>* puntos;
+	vector<int> puntos_clusterizados;
 	double fitness;
 	c_generador_aleatorio* generador_aleatorio;
 	c_rectangulo* valores_limite;
@@ -207,6 +210,7 @@ class c_cromosoma {
 	void mutar();
 	string to_string();
 	string to_cluster();
+	void splitear_el_cluster_mas_grande();
 };
 
 //El constructor por defecto viene vacio. Sirve para definir cromosomas temporales
@@ -221,7 +225,8 @@ c_cromosoma::c_cromosoma(int k_max, c_rectangulo* valores_limite, double promedi
 	c_cromosoma::puntos = puntos;
 	c_cromosoma::valores_limite = valores_limite;
 	c_cromosoma::generador_aleatorio = generador_aleatorio;
-
+	puntos_clusterizados = vector<int>(puntos->size());
+	
 	//Genera el cromosoma al azar de la corrida. Primero los valores de activacion.
 	//Fuerza que haya cantidad_de_clusters_inicial habilitados
 	for(int cluster_inicial = 0; cluster_inicial < cantidad_de_clusters_inicial; cluster_inicial++){
@@ -248,7 +253,8 @@ c_cromosoma::c_cromosoma(int k_max, c_rectangulo* valores_limite, double promedi
 	c_cromosoma::promedio_al_centro_del_dataset = promedio_al_centro_del_dataset;
 	c_cromosoma::puntos = puntos;
 	c_cromosoma::valores_limite = valores_limite;
-
+	puntos_clusterizados = vector<int>(puntos->size());
+	
 	//Genera el cromosoma al azar de la corrida. Primero los valores de activacion.
 	c_cromosoma::valores_de_activacion = valores_de_activacion;
 	//Ahora genera los centroides. Los genera dentro de los rangos maximos y minimos de los valores limite
@@ -405,6 +411,7 @@ double c_cromosoma::calcular_fitness(){
 			double distancia_a_i = (pow(((*puntos)[punto]->x - centroides[clusters_habilitados[i]].x), 2) + pow(((*puntos)[punto]->y - centroides[clusters_habilitados[i]].y), 2));
 			if(distancia_a_i < distancia_a_k) {
 				distancia_a_k = distancia_a_i;
+				puntos_clusterizados[punto] = clusters_habilitados[i];
 			}
 		}
 		distancia_intra_cluster	+= distancia_a_k;//La distancia cuadriatica del punto al cluster que pertenece	
@@ -413,6 +420,159 @@ double c_cromosoma::calcular_fitness(){
 	//Teniendo todo solo resta calcular el indice CH
 	fitness = ((promedio_al_centro_del_dataset - distancia_intra_cluster)/distancia_intra_cluster)*((puntos->size()-clusters)/(clusters-1));
 	return fitness;
+}
+
+/*----------------
+Funcion de spliting
+----------------*/
+void c_cromosoma::splitear_el_cluster_mas_grande(){
+
+	//Cuantos clusters hay habilitados
+	vector<int> clusters_habilitados;
+	for(int k = 0; k < k_max; k++){
+		//Si el valor de activacion es mayor a 0.5 (i.e. esta activado) busca los puntos que pertenecen a ese cluster		
+		if(valores_de_activacion[k] >= 0.5) clusters_habilitados.push_back(k);
+	}
+
+	clusters = clusters_habilitados.size();
+	
+	//Si la cantidad de clusters es la maxima, sale
+	if(clusters == centroides.size()) return;
+
+	//Va a sumar todas las distancias intra-clusters
+	vector<double> distancias_intra_clusters(centroides.size());
+	vector<int> puntos_en_clusters(puntos->size());
+	double distancia_intra_cluster = 0;
+		
+	//Asigna primero cada punto a un cluster por proximidad
+	for(int punto = 0; punto < puntos->size(); punto++){
+		//Inicializa la distancia al cluster al que pertenece (infinity = no pertenece a ninguno)		
+		double distancia_a_k = INFINITY;
+		for(int i=0; i < clusters_habilitados.size(); i++){
+			//Si la distancia a este centroide es la mas chica, se lo asigno al centroide
+			double distancia_a_i = (pow(((*puntos)[punto]->x - centroides[clusters_habilitados[i]].x), 2) + pow(((*puntos)[punto]->y - centroides[clusters_habilitados[i]].y), 2));
+			if(distancia_a_i < distancia_a_k) {
+				distancia_a_k = distancia_a_i;
+				puntos_en_clusters[punto] = clusters_habilitados[i];
+			}
+		}
+		distancias_intra_clusters[puntos_en_clusters[punto]] += distancia_a_k;
+		distancia_intra_cluster	+= distancia_a_k;//La distancia cuadriatica del punto al cluster que pertenece	
+	}
+
+	//buscamos el cluster que mas aporta a las distancias y lo spliteamos por algun lado
+	int idx_mayor_aporte 	= 0;
+	double mayor_aporte 	= -INFINITY;
+	for(int i=0; i < clusters_habilitados.size(); i++){
+		if(distancias_intra_clusters[clusters_habilitados[i]] > mayor_aporte){
+			idx_mayor_aporte = clusters_habilitados[i];
+			mayor_aporte = distancias_intra_clusters[clusters_habilitados[i]];
+		}
+	}	
+	
+	//buscamos el ancho y el alto del cluster ordenando los puntos
+	c_rectangulo rectangulo(INFINITY, INFINITY, -INFINITY, -INFINITY);
+	for(int punto = 0; punto < puntos->size(); punto++){
+		if(puntos_en_clusters[punto] == idx_mayor_aporte){
+			if((*puntos)[punto]->x < rectangulo.inferior_izquierdo.x){
+				rectangulo.inferior_izquierdo.x = (*puntos)[punto]->x;
+			}else if((*puntos)[punto]->x > rectangulo.superior_derecho.x){
+				rectangulo.superior_derecho.x = (*puntos)[punto]->x;
+			}
+
+			if((*puntos)[punto]->y < rectangulo.inferior_izquierdo.y){
+				rectangulo.inferior_izquierdo.y = (*puntos)[punto]->y;
+			}else if((*puntos)[punto]->y > rectangulo.superior_derecho.y){
+				rectangulo.superior_derecho.y = (*puntos)[punto]->y;
+			}			
+		
+		}
+	}
+
+	double ancho = rectangulo.superior_derecho.x - rectangulo.inferior_izquierdo.x;
+	double alto  = rectangulo.superior_derecho.y - rectangulo.inferior_izquierdo.y;
+	
+	//generamos dos centroides mas a partir del centroide actual y de la longitud caracteristica
+	c_punto centroide_nuevo_1;
+	c_punto centroide_nuevo_2;
+	c_punto centroide_viejo_1;
+	c_punto centroide_viejo_2;	
+	if(ancho > alto){
+		centroide_nuevo_1.x = centroides[idx_mayor_aporte].x - (ancho/3);
+		centroide_nuevo_1.y = centroides[idx_mayor_aporte].y;
+		centroide_nuevo_2.x = centroides[idx_mayor_aporte].x + (ancho/3);
+		centroide_nuevo_2.y = centroides[idx_mayor_aporte].y;
+	}else{
+		centroide_nuevo_1.x = centroides[idx_mayor_aporte].x ;
+		centroide_nuevo_1.y = centroides[idx_mayor_aporte].y - (alto/3);
+		centroide_nuevo_2.x = centroides[idx_mayor_aporte].x;
+		centroide_nuevo_2.y = centroides[idx_mayor_aporte].y + (alto/3);
+	}
+
+	centroide_viejo_1 = centroides[idx_mayor_aporte];
+
+	//Reemplazamos el centroide actual y alguno apagado por los nuevos
+	int idx_viejo;
+	double valor_de_activacion_viejo;
+	for(int k = 0; k < k_max; k++){
+		//Si el valor de activacion es menor a 0.5 (i.e. esta apagado) lo usamos
+		if(valores_de_activacion[k] < 0.5){
+			valor_de_activacion_viejo = valores_de_activacion[k];
+			valores_de_activacion[k] = 0.5;
+			centroide_viejo_2 = centroides[k];
+			centroides[k] = centroide_nuevo_1;
+			idx_viejo = k;
+			break;
+		}
+	}
+	centroides[idx_mayor_aporte] = centroide_nuevo_2;
+	
+	//Calculamos el delta fitness
+	double delta_fitness = fitness - calcular_fitness();
+
+	//Montecarleamos con el fitness nuevo (descartamos los cambios con probabilidad 1-exp{-Bdf})
+	double r = generador_aleatorio->runif();
+	if(r > exp(-delta_fitness)){
+		
+		valores_de_activacion[idx_viejo] = valor_de_activacion_viejo;
+		centroides[idx_viejo] 		 = centroide_viejo_2;
+		centroides[idx_mayor_aporte]	 = centroide_viejo_1;
+	}
+		
+}
+
+/*---------------------
+Clase fitness landscape
+---------------------*/
+class c_fitness_landscape{
+	public:
+	vector<vector<double>> disimilaridad;
+	c_fitness_landscape(int cromosomas);
+	void calcular_disimilaridad(const vector<c_cromosoma> &cromosomas, const vector<c_punto> &puntos);
+	
+};
+
+c_fitness_landscape::c_fitness_landscape(int cromosomas){
+	disimilaridad = vector<vector<double>> (cromosomas, vector<double>(cromosomas));
+}
+
+void c_fitness_landscape::calcular_disimilaridad(const vector<c_cromosoma> &cromosomas, const vector<c_punto> &puntos){
+	//Usamos jaccard y calculamos la disimilaridad de forma pairwise
+	int M01 = 0; //Numero de atributos en A pero no en B
+	int M10 = 0; //Numero de atributos en B pero no en A
+	int M11 = 0; //Numero de atributos en ambos a la vez
+	
+	for(int cromosoma_1 = 0; cromosoma_1 < cromosomas.size(); cromosoma_1++){
+		M01 = M10 = M11 = 0;
+		for(int cromosoma_2 = (cromosoma_1 + 1); cromosoma_2 < cromosomas.size(); cromosoma_2++){
+			for(int punto = 0; punto < puntos.size(); punto++){
+				//if(cromosomas[cromosoma_1]
+			}
+		}
+		
+	}
+	
+	
 }
 
 /**********************
@@ -688,6 +848,7 @@ void mutar(vector<c_cromosoma> &cromosomas, int desde, int hasta){
 	}
 }
 
+
 /*******************
 COMIENZA EL PROGRAMA
 *******************/
@@ -771,7 +932,7 @@ int main(){
 		cantidad_de_threads = sysconf(_SC_NPROCESSORS_ONLN);
 	}
 	std::thread threads[cantidad_de_threads];
-
+	cout << "Usando " << cantidad_de_threads << " threads\n";
 	//Comienza la evolucion
 	std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 	int iteraciones_con_max_fitness_igual[especies];
@@ -806,14 +967,6 @@ int main(){
 					//Pausa hasta que terminan los threads
 					threads[n_thread].join();
 				}
-				/*
-				std::thread primera(mutar, ref(cromosomas_nuevos), 0, cromosomas_nuevos.size()/2);
-				std::thread segunda(mutar, ref(cromosomas_nuevos), cromosomas_nuevos.size()/2, cromosomas_nuevos.size());  
-			
-				//Pausa hasta que terminan los dos threads
-				primera.join();
-				segunda.join();
-				*/
 			}else{
 				mutar(cromosomas_nuevos[especie], 0, cromosomas_nuevos[especie].size());
 			}	
@@ -856,7 +1009,7 @@ int main(){
 		}
 		
 		//Mezcla las mejores soluciones de cada especie
-		if(generacion % cada_cuantas_generaciones_intercambiar_especies == 0){
+		if((generacion+1) % cada_cuantas_generaciones_intercambiar_especies == 0 && especies > 1){
 			vector<vector<c_cromosoma>> intercambiar_cromosomas(especies);
 			
 			//Reserva las soluciones a intercambiar
@@ -865,15 +1018,27 @@ int main(){
 			}
 			
 			//Intercambia las soluciones
-			for(int cromosoma = 0; cromosoma < soluciones_de_elite_a_intercambiar; cromosoma++){
-				for(int especie = 0; especie < (especies-1); especie++){
-					cromosomas[especie][cromosoma] = intercambiar_cromosomas[especie+1][cromosoma];
-				}
-				cromosomas[(especies-1)][cromosoma] = intercambiar_cromosomas[0][cromosoma];
+			for(int especie = 0; especie < (especies-1); especie++){
+				aplicar_soluciones_de_elite(cromosomas[especie], intercambiar_cromosomas[especie+1], generador_aleatorio);
 			}
+			aplicar_soluciones_de_elite(cromosomas[(especies-1)], intercambiar_cromosomas[0], generador_aleatorio);
 			cout << "Intercambio de especies (nichos)\n";
 			
 		}
+		
+		//Splitea los clusters mas grandes
+		if((generacion+1) % cada_cuantas_generaciones_splitear_clusters == 0){
+			vector<vector<c_cromosoma>> intercambiar_cromosomas(especies);
+			cout << "Spliteando clusters\n";
+			//Reserva las soluciones a intercambiar
+			for(int especie = 0; especie < especies; especie++){
+				for(int cromosoma = 0; cromosoma < poblacion; cromosoma++){
+						cromosomas[especie][cromosoma].splitear_el_cluster_mas_grande();
+				}
+			}
+			
+		}		
+
 	}
 	
 	for(int especie = 0; especie < especies; especie++){
@@ -892,7 +1057,7 @@ int main(){
  	for(int p = 0; p < puntos.size(); p++){
 		archivo_puntos << puntos[p]->x << "\t" << puntos[p]->y << "\n";
 	}
- 	archivo_puntos.close();
+	archivo_puntos.close();
 
 	archivo_soluciones << buffer_de_soluciones;
 	archivo_soluciones.close();
